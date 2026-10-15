@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: ghostcode-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    region: singapore
+    # Day 4: the FastAPI backend adds GET /health and the entrypoint switches to uvicorn.
+    healthCheckPath: /health
+    envVars:
+      - key: GHOSTCODE_MAX_FILES
+        value: "20000"
+      - key: GHOSTCODE_MAX_FILE_BYTES
+        value: "1000000"
