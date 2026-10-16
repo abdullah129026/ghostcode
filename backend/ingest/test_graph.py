@@ -8,6 +8,8 @@ for the rules each fixture pins down.
 import os
 
 from ingest import schema
+from ingest.ghosts import detect_ghosts, entry_files, live_symbols
+from ingest.graph import add_resolved_edges, build_graph
 from ingest.resolve import call_edges, import_edges, resolve_module, use_edges
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -121,3 +123,55 @@ def test_use_edges_default_import(tmp_path):
     ]
     edges = use_edges(root, records)
     assert ("index.js", "view.js", "function", "render", "uses") in edges
+
+
+def test_entry_files():
+    records = [
+        _record("run.py", has_main_guard=True),
+        _record("pkg/__init__.py"),
+        _record("tests/test_x.py", calls=[schema.call_record("f", None, 1)]),
+        _record("index.js", language="javascript"),
+        _record("script.py", calls=[schema.call_record("f", None, 1)]),
+        _record("lib.py", defs=[schema.def_record("function", "f", 1, 2)]),
+        _record("constants.py"),  # no defs, no calls: stays flaggable
+    ]
+    entries = entry_files(records)
+    assert entries == {"run.py", "pkg/__init__.py", "tests/test_x.py",
+                       "index.js", "script.py"}
+
+
+def test_live_symbols_dunder_and_tests():
+    records = [
+        _record("a.py", defs=[schema.def_record("method", "__repr__", 1, 2),
+                              schema.def_record("function", "dead", 3, 4)]),
+        _record("test_a.py", defs=[schema.def_record("function", "test_x", 1, 2)]),
+    ]
+    graph = build_graph(records)
+    live = live_symbols(records, graph)
+    by_name = {}
+    for (path, kind, name), ids in graph.graph["symbol_index"].items():
+        by_name[name] = set(ids)
+    assert by_name["__repr__"] <= live
+    assert by_name["test_x"] <= live
+    assert not (by_name["dead"] & live)
+
+
+def test_detect_ghosts_smoke(tmp_path):
+    (tmp_path / "used.py").write_text("")
+    (tmp_path / "dead.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("used.py", defs=[schema.def_record("function", "f", 1, 2)]),
+        _record("dead.py", defs=[schema.def_record("function", "g", 1, 2)]),
+        _record("main.py", has_main_guard=True,
+                imports=[schema.import_record("used", kind="import"),
+                         schema.import_record("used", kind="from",
+                                              names=[{"name": "f", "alias": None}])],
+                calls=[schema.call_record("f", None, 3)]),
+    ]
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    assert report["schema"] == 1
+    assert [f["path"] for f in report["files"]] == ["dead.py"]
+    assert [(s["path"], s["name"]) for s in report["symbols"]] == [("dead.py", "g")]

@@ -12,7 +12,8 @@ import json
 import sys
 
 from .extract import extract_file
-from .graph import build_graph, graph_json
+from .ghosts import detect_ghosts
+from .graph import add_resolved_edges, build_graph, graph_json
 from .walk import walk_repo, WalkError
 from . import schema
 
@@ -23,6 +24,8 @@ def parse_args(argv=None):
     parser.add_argument("repo", help="path to a local repo checkout")
     parser.add_argument("--symbols", action="store_true",
                         help="print raw symbol records instead of graph JSON")
+    parser.add_argument("--ghosts", action="store_true",
+                        help="print the ghost report (dead files and symbols)")
     return parser.parse_args(argv)
 
 
@@ -44,7 +47,11 @@ def main(argv=None):
     except OSError as exc:
         print(f"ghostcode: cannot read repo: {exc}", file=sys.stderr)
         return 2
-    if args.symbols:
+    if args.ghosts:
+        graph = build_graph(records)
+        add_resolved_edges(graph, records, args.repo)
+        payload = detect_ghosts(records, graph)
+    elif args.symbols:
         payload = {"schema": schema.SCHEMA_VERSION, "files": records}
     else:
         payload = graph_json(build_graph(records))
