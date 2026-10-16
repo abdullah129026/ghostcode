@@ -93,7 +93,7 @@ def detect_ghosts(records, graph):
         if attrs.get("kind") != "symbol" or node in live:
             continue
         incoming = [d for _, _, d in graph.in_edges(node, data=True)]
-        if not any(d.get("type") in ("calls", "uses") for d in incoming):
+        if not any(d.get("type") in ("call", "uses") for d in incoming):
             symbols.append({
                 "id": node,
                 "path": attrs.get("file"),

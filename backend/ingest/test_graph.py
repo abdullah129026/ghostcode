@@ -8,11 +8,42 @@ for the rules each fixture pins down.
 import os
 
 from ingest import schema
+from ingest.cli import analyze
 from ingest.ghosts import detect_ghosts, entry_files, live_symbols
 from ingest.graph import add_resolved_edges, build_graph
 from ingest.resolve import call_edges, import_edges, resolve_module, use_edges
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
+
+def _norm_path(path):
+    return path.replace(os.sep, "/")
+
+
+def _fixture_ghosts(name):
+    root = os.path.join(FIXTURES, name)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    return detect_ghosts(records, graph)
+
+
+def test_python_fixture_exact_ghost_set():
+    report = _fixture_ghosts("py_app")
+    assert report["schema"] == 1
+    assert [_norm_path(f["path"]) for f in report["files"]] == ["truly_dead.py"]
+    got = {(_norm_path(s["path"]), s["name"]) for s in report["symbols"]}
+    assert got == {("utils.py", "stale"), ("pkg/core.py", "internal"),
+                   ("truly_dead.py", "gone")}
+
+
+def test_js_fixture_exact_ghost_set():
+    report = _fixture_ghosts("js_app")
+    assert report["schema"] == 1
+    assert [_norm_path(f["path"]) for f in report["files"]] == ["orphan.js"]
+    got = {(_norm_path(s["path"]), s["name"]) for s in report["symbols"]}
+    assert got == {("lib.js", "unused"), ("cjs.js", "stringify"),
+                   ("orphan.js", "lost")}
 
 
 def test_resolve_python_absolute_and_relative(tmp_path):
