@@ -258,14 +258,12 @@ def _extract_js(root):
             if default is not None:
                 default_export = default
         elif node.type == "call_expression":
-            record = _js_call(node)
+            record = _js_call(node, ancestors)
             if record is not None:
                 kind, payload = record
                 (imports if kind == "import" else calls).append(payload)
         elif node.type == "assignment_expression":
-            record = _js_cjs_export(node)
-            if record is not None:
-                exports.append(record)
+            exports.extend(_js_cjs_export(node))
     return imports, defs, exports, calls, default_export
 
 
@@ -348,7 +346,7 @@ def _js_export_info(node):
     return names, default
 
 
-def _js_call(node):
+def _js_call(node, ancestors):
     """Returns ("call", record) or ("import", record) for require("x")."""
     func = node.child_by_field_name("function")
     if func is None:
@@ -371,7 +369,9 @@ def _js_call(node):
             for arg in args.children:
                 if arg.type == "string":
                     return ("import", schema.import_record(
-                        _text(arg).strip("\"'`"), lineno=_lineno(node), kind="require"))
+                        _text(arg).strip("\"'`"),
+                        names=_js_require_names(ancestors),
+                        lineno=_lineno(node), kind="require"))
         return None
     if "." in dotted:
         receiver, _, name = dotted.rpartition(".")
@@ -380,15 +380,63 @@ def _js_call(node):
     return ("call", schema.call_record(name, receiver, _lineno(node)))
 
 
+def _js_require_names(ancestors):
+    """Names bound by `const { a, b: c } = require("./m")`.
+
+    Without these, every destructured require() looks like a bare module
+    load and the used names never resolve. `const x = require("./m")`
+    (no destructuring) binds nothing here; call resolution handles the
+    `x.name()` shape through the namespace instead.
+    """
+    if not ancestors:
+        return []
+    parent = ancestors[-1]
+    if parent.type != "variable_declarator":
+        return []
+    name = parent.child_by_field_name("name")
+    if name is None or name.type != "object_pattern":
+        return []
+    bound = []
+    for child in name.children:
+        if child.type in ("shorthand_property_identifier",
+                          "shorthand_property_identifier_pattern"):
+            bound.append({"name": _text(child), "alias": None})
+        elif child.type in ("pair", "pair_pattern"):
+            key = child.child_by_field_name("key")
+            value = child.child_by_field_name("value")
+            if key is not None:
+                bound.append({
+                    "name": _text(key),
+                    "alias": _text(value) if value is not None and "identifier" in value.type else None,
+                })
+    return bound
+
+
 def _js_cjs_export(node):
-    """module.exports = {...} / module.exports.x = ... / exports.x = ..."""
+    """Names exposed through CommonJS: a list, possibly empty.
+
+    `module.exports = { parse, stringify }` exposes both keys;
+    `module.exports = something` exposes an unknowable shape, so it
+    reports nothing (the file-level edge from require() still exists).
+    """
     left = node.child_by_field_name("left")
+    right = node.child_by_field_name("right")
     if left is None or left.type != "member_expression":
-        return None
+        return []
     dotted = _text(left)
     if dotted == "module.exports":
-        return "__module__"
+        if right is not None and right.type == "object":
+            names = []
+            for child in right.children:
+                if child.type == "shorthand_property_identifier":
+                    names.append(_text(child))
+                elif child.type == "pair":
+                    key = child.child_by_field_name("key")
+                    if key is not None:
+                        names.append(_text(key).strip("\"'`"))
+            return names
+        return []
     for prefix in ("module.exports.", "exports."):
         if dotted.startswith(prefix):
-            return dotted[len(prefix):]
-    return None
+            return [dotted[len(prefix):]]
+    return []

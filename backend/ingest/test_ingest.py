@@ -129,3 +129,19 @@ def test_js_dynamic_import():
     record = extract_file("a.js", b'import("./chunk.js");\n')
     assert any(i["module"] == "./chunk.js" and i["kind"] == "dynamic"
                for i in record["imports"])
+
+
+def test_cjs_export_keys():
+    src = b'function parse() {}\nfunction stringify() {}\nmodule.exports = { parse, stringify };\n'
+    assert set(extract_file("c.js", src)["exports"]) == {"parse", "stringify"}
+    # `module.exports = <identifier>` has an unknowable shape: no names
+    src2 = b'const api = {};\nmodule.exports = api;\n'
+    assert extract_file("d.js", src2)["exports"] == []
+
+
+def test_require_destructured_names():
+    record = extract_file("i.js", b'const { parse, stringify: s } = require("./cjs.js");\nparse("x");\n')
+    req = next(i for i in record["imports"] if i["kind"] == "require")
+    assert req["module"] == "./cjs.js"
+    assert {"name": "parse", "alias": None} in req["names"]
+    assert {"name": "stringify", "alias": "s"} in req["names"]
