@@ -107,3 +107,160 @@ def _parent_packages(root, target):
             out.append(init)
         directory = os.path.dirname(directory)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Symbol resolution: which defined symbol does a call or import name refer to
+# ---------------------------------------------------------------------------
+
+def _records_by_path(records):
+    return {r["path"]: r for r in records}
+
+
+def _resolve_name(root, by_path, path, name, seen):
+    """Chase a name to (path, kind, name), following barrel re-exports.
+
+    `from pkg import api` where `pkg/__init__.py` does `from .core import
+    api` resolves to the def in `pkg/core.py`, not to the __init__ file.
+    """
+    if (path, name) in seen:
+        return None
+    seen = seen | {(path, name)}
+    record = by_path.get(path)
+    if record is None:
+        return None
+    for d in record["defs"]:
+        if d["name"] == name:
+            return (path, d["kind"], name)
+    for imp in record["imports"]:
+        if imp["kind"] not in ("from", "require"):
+            continue
+        if name not in {n["name"] for n in imp.get("names", [])}:
+            continue
+        for target in resolve_module(root, path, record["language"], imp["module"]):
+            hit = _resolve_name(root, by_path, target, name, seen)
+            if hit is not None:
+                return hit
+    return None
+
+
+def _resolve_default(root, by_path, target):
+    """(path, kind, name) for a default import, or [] when unknowable."""
+    record = by_path.get(target)
+    if record is None:
+        return []
+    name = record.get("default_export")
+    if not name:
+        return []
+    return [(target, d["kind"], name) for d in record["defs"]
+            if d["name"] == name]
+
+
+def _import_bindings(root, record):
+    """Local names bound by imports: (named, default, namespace) maps.
+
+    named:     local -> (target_path, exported_name), e.g. `from m import f`
+    default:   local -> target_path, e.g. `import render from "./view.js"`
+    namespace: local -> target_path, e.g. `import os`, `import * as ns`
+    """
+    named, default, namespace = {}, {}, {}
+    for imp in record["imports"]:
+        targets = resolve_module(root, record["path"],
+                                 record["language"], imp["module"])
+        if not targets:
+            continue
+        target = targets[0]
+        if imp.get("default"):
+            default[imp["default"]] = target
+        for n in imp.get("names", []):
+            local = n.get("alias") or n["name"]
+            if local:
+                named[local] = (target, n["name"])
+        if imp.get("alias") and not imp.get("names") and not imp.get("default"):
+            namespace[imp["alias"]] = target  # import * as ns / import x as y
+        elif imp["kind"] == "import" and not imp.get("names"):
+            local = imp.get("alias") or imp["module"].split(".")[0]
+            namespace.setdefault(local, target)  # `import os`
+    return named, default, namespace
+
+
+def call_edges(root, records):
+    """(src, dst_path, dst_kind, dst_name, "call") for resolved call sites."""
+    edges, seen = [], set()
+    by_path = _records_by_path(records)
+    for record in records:
+        named, default, namespace = _import_bindings(root, record)
+        local_defs = {}
+        for d in record["defs"]:
+            local_defs.setdefault(d["name"], []).append(d["kind"])
+        for call in record["calls"]:
+            name, receiver = call["name"], call["receiver"]
+            if not name:
+                continue
+            hits = _resolve_call(root, by_path, record, named, default,
+                                 namespace, local_defs, name, receiver)
+            for hit in hits:
+                key = (record["path"],) + hit + ("call",)
+                if key not in seen:
+                    seen.add(key)
+                    edges.append((record["path"],) + hit + ("call",))
+    return edges
+
+
+def _resolve_call(root, by_path, record, named, default, namespace,
+                  local_defs, name, receiver):
+    if receiver is None:
+        if name in local_defs:
+            return [(record["path"], kind, name) for kind in local_defs[name]]
+        if name in named:
+            target, exported = named[name]
+            hit = _resolve_name(root, by_path, target, exported, set())
+            return [hit] if hit else []
+        if name in default:
+            return _resolve_default(root, by_path, default[name])
+        return []
+    methods = [kind for kind in local_defs.get(name, []) if kind == "method"]
+    if methods:
+        # The receiver's type is unknowable statically, so any same-file
+        # method with this name keeps it live. False negatives beat
+        # false positives: a missed ghost is a shrug, a live method
+        # flagged as dead kills trust.
+        return [(record["path"], "method", name)]
+    base = receiver.split(".")[0]
+    if base in namespace:
+        hit = _resolve_name(root, by_path, namespace[base], name, set())
+        return [hit] if hit else []
+    if base in named:
+        # `from m import obj` then `obj.method()`: obj names a module here
+        # often enough (from pkg import submodule) to be worth the chase
+        hit = _resolve_name(root, by_path, named[base][0], name, set())
+        return [hit] if hit else []
+    return []
+
+
+def use_edges(root, records):
+    """(src, dst_path, dst_kind, dst_name, "uses") for named imports.
+
+    An imported name counts as used: deleting it means touching the
+    importer too, so it is never a safe auto-delete. Unused-import
+    linting is a different tool's job.
+    """
+    edges, seen = [], set()
+    by_path = _records_by_path(records)
+    for record in records:
+        named, default, _namespace = _import_bindings(root, record)
+        for _local, (target, exported) in named.items():
+            hit = _resolve_name(root, by_path, target, exported, set())
+            if hit:
+                _add_sym_edge(edges, seen, record["path"], hit, "uses")
+        for _local, target in default.items():
+            for hit in _resolve_default(root, by_path, target):
+                _add_sym_edge(edges, seen, record["path"], hit, "uses")
+    return edges
+
+
+def _add_sym_edge(edges, seen, src, hit, kind):
+    key = (src,) + hit + (kind,)
+    if key not in seen:
+        seen.add(key)
+        edges.append((src,) + hit + (kind,))

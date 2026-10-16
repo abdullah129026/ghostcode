@@ -7,7 +7,8 @@ for the rules each fixture pins down.
 
 import os
 
-from ingest.resolve import import_edges, resolve_module
+from ingest import schema
+from ingest.resolve import call_edges, import_edges, resolve_module, use_edges
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -48,3 +49,75 @@ def test_import_edges_include_parent_packages(tmp_path):
     }]
     edges = import_edges(root, records)
     assert ("pkg/__init__.py", "pkg/core.py", "from") in edges
+
+
+def _record(path, language="python", defs=(), imports=(), calls=(),
+            has_main_guard=False, default_export=None):
+    return schema.file_record(path, language, 10, list(imports), list(defs),
+                              [], list(calls), has_main_guard=has_main_guard,
+                              default_export=default_export)
+
+
+def test_call_edges_same_file():
+    records = [_record(
+        "a.py",
+        defs=[schema.def_record("function", "f", 1, 3),
+              schema.def_record("function", "g", 4, 5)],
+        calls=[schema.call_record("f", None, 5)],
+    )]
+    edges = call_edges("/nonexistent", records)
+    assert ("a.py", "a.py", "function", "f", "call") in edges
+    assert not any(e[3] == "g" for e in edges)
+
+
+def test_call_edges_method_receiver_keeps_live():
+    records = [_record(
+        "a.py",
+        defs=[schema.def_record("class", "Widget", 1, 9),
+              schema.def_record("method", "render", 2, 4, parent="Widget")],
+        calls=[schema.call_record("render", "widget", 8)],
+    )]
+    edges = call_edges("/nonexistent", records)
+    assert ("a.py", "a.py", "method", "render", "call") in edges
+
+
+def test_call_edges_cross_file_named_import(tmp_path):
+    (tmp_path / "lib.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("lib.py", defs=[schema.def_record("function", "used", 1, 2)]),
+        _record("app.py",
+                imports=[schema.import_record("lib", names=[{"name": "used", "alias": None}],
+                                              kind="from")],
+                calls=[schema.call_record("used", None, 3)]),
+    ]
+    edges = call_edges(root, records)
+    assert ("app.py", "lib.py", "function", "used", "call") in edges
+
+
+def test_use_edges_named_import_counts_as_use(tmp_path):
+    (tmp_path / "lib.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("lib.py", defs=[schema.def_record("function", "kept", 1, 2)]),
+        _record("app.py",
+                imports=[schema.import_record("lib", names=[{"name": "kept", "alias": None}],
+                                              kind="from")]),
+    ]
+    edges = use_edges(root, records)
+    assert ("app.py", "lib.py", "function", "kept", "uses") in edges
+
+
+def test_use_edges_default_import(tmp_path):
+    (tmp_path / "view.js").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("view.js", language="javascript",
+                defs=[schema.def_record("function", "render", 1, 3)],
+                default_export="render"),
+        _record("index.js", language="javascript",
+                imports=[{**schema.import_record("./view.js", kind="from"),
+                          "default": "render"}]),
+    ]
+    edges = use_edges(root, records)
+    assert ("index.js", "view.js", "function", "render", "uses") in edges
