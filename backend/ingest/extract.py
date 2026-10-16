@@ -131,7 +131,11 @@ def _extract_python(root):
                                    _end_lineno(node), parent)
             )
         elif node.type == "call":
-            calls.append(_py_call(node))
+            dynamic = _py_dynamic_import(node)
+            if dynamic is not None:
+                imports.append(dynamic)
+            else:
+                calls.append(_py_call(node))
     return imports, defs, exports, calls
 
 
@@ -192,6 +196,29 @@ def _py_call(node):
     else:
         receiver, name = None, dotted
     return schema.call_record(name, receiver, _lineno(node))
+
+
+_DYNAMIC_CALLS = {"importlib.import_module", "__import__"}
+
+
+def _py_dynamic_import(node):
+    """importlib.import_module("pkg.mod") with a literal: a real dependency.
+
+    Only the literal-string case; anything computed stays invisible, and
+    the file it would have pointed at keeps its ghost status. That is the
+    documented ceiling: literal dynamic imports resolve, the rest do not.
+    """
+    func = node.child_by_field_name("function")
+    if func is None or _text(func) not in _DYNAMIC_CALLS:
+        return None
+    args = node.child_by_field_name("arguments")
+    if args is None:
+        return None
+    for arg in args.children:
+        if arg.type == "string":
+            return schema.import_record(_text(arg).strip("\"'"),
+                                        lineno=_lineno(node), kind="dynamic")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +352,17 @@ def _js_call(node):
     """Returns ("call", record) or ("import", record) for require("x")."""
     func = node.child_by_field_name("function")
     if func is None:
+        return None
+    if func.type == "import":
+        # dynamic import("./chunk.js"): same treatment as a static import
+        # when the specifier is a literal, invisible otherwise
+        args = node.child_by_field_name("arguments")
+        if args is not None:
+            for arg in args.children:
+                if arg.type == "string":
+                    return ("import", schema.import_record(
+                        _text(arg).strip("\"'`"), lineno=_lineno(node),
+                        kind="dynamic"))
         return None
     dotted = _text(func)
     if dotted == "require":

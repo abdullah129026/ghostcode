@@ -112,3 +112,20 @@ def test_js_default_export():
     assert "used" in record["exports"]
     plain = extract_file("w.js", b"export function used() {}\n")
     assert plain["default_export"] is None
+
+
+def test_python_dynamic_import():
+    src = b'import importlib\nmod = importlib.import_module("plugins.fast")\n'
+    record = extract_file("p.py", src)
+    by_module = {i["module"]: i for i in record["imports"]}
+    assert by_module["plugins.fast"]["kind"] == "dynamic"
+    assert by_module["importlib"]["kind"] == "import"
+    # non-literal specifiers stay invisible
+    record2 = extract_file("q.py", b"import importlib\nmod = importlib.import_module(name)\n")
+    assert all(i["kind"] != "dynamic" for i in record2["imports"])
+
+
+def test_js_dynamic_import():
+    record = extract_file("a.js", b'import("./chunk.js");\n')
+    assert any(i["module"] == "./chunk.js" and i["kind"] == "dynamic"
+               for i in record["imports"])
