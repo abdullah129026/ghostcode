@@ -7,7 +7,8 @@ removed, so old reports and the dashboard can keep reading what they know.
 SCHEMA_VERSION = 1
 
 
-def file_record(path, language, loc, imports, defs, exports, calls):
+def file_record(path, language, loc, imports, defs, exports, calls,
+               has_main_guard=False, default_export=None):
     return {
         "path": path,
         "language": language,
@@ -16,6 +17,11 @@ def file_record(path, language, loc, imports, defs, exports, calls):
         "defs": defs,
         "exports": exports,
         "calls": calls,
+        # True when a Python file has an `if __name__ == "__main__":` block:
+        # it is run, not imported, so it is an entry point, not a ghost.
+        "has_main_guard": has_main_guard,
+        # Name of the default-exported symbol for JS/TS modules (else None).
+        "default_export": default_export,
     }
 
 

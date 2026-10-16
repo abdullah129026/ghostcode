@@ -96,3 +96,19 @@ def test_js_exports_and_calls():
     call_names = {c["name"] for c in record["calls"]}
     assert "build" in call_names
     assert "useState" in call_names
+
+
+def test_python_main_guard():
+    guarded = extract_file("run.py", b'def main():\n    pass\n\nif __name__ == "__main__":\n    main()\n')
+    assert guarded["has_main_guard"] is True
+    plain = extract_file("lib.py", b"def f():\n    pass\n")
+    assert plain["has_main_guard"] is False
+
+
+def test_js_default_export():
+    record = extract_file("v.js", b"export default function render() {}\nexport function used() {}\n")
+    assert record["default_export"] == "render"
+    assert "render" in record["exports"]
+    assert "used" in record["exports"]
+    plain = extract_file("w.js", b"export function used() {}\n")
+    assert plain["default_export"] is None

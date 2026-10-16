@@ -93,10 +93,15 @@ def extract_file(path, source):
     tree = _PARSERS[language].parse(source)
     if language == "python":
         imports, defs, exports, calls = _extract_python(tree.root_node)
+        has_main_guard = _py_main_guard(tree.root_node)
+        default_export = None
     else:
-        imports, defs, exports, calls = _extract_js(tree.root_node)
+        imports, defs, exports, calls, default_export = _extract_js(tree.root_node)
+        has_main_guard = False
     loc = source.count(b"\n") + (0 if source.endswith(b"\n") else 1)
-    return schema.file_record(path, language, loc, imports, defs, exports, calls)
+    return schema.file_record(path, language, loc, imports, defs, exports, calls,
+                              has_main_guard=has_main_guard,
+                              default_export=default_export)
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +133,24 @@ def _extract_python(root):
         elif node.type == "call":
             calls.append(_py_call(node))
     return imports, defs, exports, calls
+
+
+def _py_main_guard(root):
+    """True when the file has an `if __name__ == "__main__":` block.
+
+    Text match inside the if condition, not a full comparison parse:
+    nobody writes `__name__` and `__main__` in one condition by accident.
+    """
+    for node, _ in _iter_nodes(root):
+        if node.type != "if_statement":
+            continue
+        condition = node.child_by_field_name("condition")
+        if condition is None:
+            continue
+        text = _text(condition)
+        if "__name__" in text and "__main__" in text:
+            return True
+    return False
 
 
 def _py_plain_imports(node):
@@ -177,6 +200,7 @@ def _py_call(node):
 
 def _extract_js(root):
     imports, defs, exports, calls = [], [], [], []
+    default_export = None
     for node, ancestors in _iter_nodes(root):
         if node.type == "import_statement":
             imports.append(_js_import(node))
@@ -202,7 +226,10 @@ def _extract_js(root):
             if record is not None:
                 defs.append(record)
         elif node.type == "export_statement":
-            exports.extend(_js_exports(node))
+            names, default = _js_export_info(node)
+            exports.extend(names)
+            if default is not None:
+                default_export = default
         elif node.type == "call_expression":
             record = _js_call(node)
             if record is not None:
@@ -212,7 +239,7 @@ def _extract_js(root):
             record = _js_cjs_export(node)
             if record is not None:
                 exports.append(record)
-    return imports, defs, exports, calls
+    return imports, defs, exports, calls, default_export
 
 
 def _js_import(node):
@@ -256,26 +283,42 @@ def _js_var_function(node):
                              _end_lineno(node))
 
 
-def _js_exports(node):
-    """export { a, b as c } / export function f() / export default ..."""
-    found = []
+def _js_export_info(node):
+    """export { a, b as c } / export function f() / export default ...
+
+    Returns (names, default_name). `export { x as default }` counts as a
+    default export too.
+    """
+    names, default = [], None
+    is_default = re.match(r"\s*export\s+default\b", _text(node)) is not None
     for child in node.children:
         if child.type == "export_clause":
             for spec in child.children:
                 if spec.type != "export_specifier":
                     continue
                 name = spec.child_by_field_name("name")
-                found.append(_text(name) if name is not None else "")
+                spec_alias = spec.child_by_field_name("alias")
+                text = _text(name) if name is not None else ""
+                alias = _text(spec_alias) if spec_alias is not None else None
+                if not text:
+                    continue
+                names.append(text)
+                if is_default or alias == "default":
+                    default = text
         elif child.type in ("function_declaration", "generator_function_declaration",
                             "class_declaration"):
             name = child.child_by_field_name("name")
             if name is not None:
-                found.append(_text(name))
+                names.append(_text(name))
+                if is_default:
+                    default = _text(name)
         elif child.type == "variable_declarator":
             name = child.child_by_field_name("name")
             if name is not None:
-                found.append(_text(name))
-    return found
+                names.append(_text(name))
+                if is_default:
+                    default = _text(name)
+    return names, default
 
 
 def _js_call(node):
