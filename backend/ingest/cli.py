@@ -17,6 +17,9 @@ from .graph import add_resolved_edges, build_graph, graph_json
 from .walk import walk_repo, WalkError
 from . import schema
 
+from engines import read_sources
+from engines.report import build_report
+
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
@@ -26,6 +29,9 @@ def parse_args(argv=None):
                         help="print raw symbol records instead of graph JSON")
     parser.add_argument("--ghosts", action="store_true",
                         help="print the ghost report (dead files and symbols)")
+    parser.add_argument("--report", action="store_true",
+                        help="print the full analysis report "
+                             "(scored ghosts, debt, cost model)")
     return parser.parse_args(argv)
 
 
@@ -47,7 +53,13 @@ def main(argv=None):
     except OSError as exc:
         print(f"ghostcode: cannot read repo: {exc}", file=sys.stderr)
         return 2
-    if args.ghosts:
+    if args.report:
+        graph = build_graph(records)
+        add_resolved_edges(graph, records, args.repo)
+        payload = build_report(records, graph,
+                               read_sources(args.repo, records),
+                               repo_label=args.repo)
+    elif args.ghosts:
         graph = build_graph(records)
         add_resolved_edges(graph, records, args.repo)
         payload = detect_ghosts(records, graph)
