@@ -5,10 +5,16 @@ services:
     dockerfilePath: ./backend/Dockerfile
     plan: free
     region: singapore
-    # Day 4: the FastAPI backend adds GET /health and the entrypoint switches to uvicorn.
+    # Day 4: the FastAPI backend serves /health and uvicorn is the entrypoint.
     healthCheckPath: /health
     envVars:
       - key: GHOSTCODE_MAX_FILES
         value: "20000"
       - key: GHOSTCODE_MAX_FILE_BYTES
         value: "1000000"
+      - key: GHOSTCODE_CLONE_TIMEOUT
+        value: "120"
+      - key: GHOSTCODE_MAX_JOBS
+        value: "100"
+      - key: GHOSTCODE_ANALYZE_RATE_PER_MIN
+        value: "20"
