@@ -9,10 +9,46 @@ the CLI prints it.
 from datetime import datetime, timezone
 
 from ingest.ghosts import detect_ghosts
+from ingest.graph import file_id
 
 from . import cost, deadcode, debt, llm_pricing
 
-REPORT_SCHEMA = 1
+REPORT_SCHEMA = 2
+
+GRAPH_NODE_CAP = 500  # the dashboard graph view renders at most this many
+
+
+def _export_graph(graph, records, ghost_paths):
+    """File-level dependency graph for the dashboard graph view.
+
+    Nodes carry path, loc and the ghost flag; edges are resolved imports.
+    Capped at the 500 largest files so the canvas stays usable; edges that
+    touch a dropped node are dropped with it.
+    """
+    # ponytail: one sort plus one edge pass, fine for in-memory graphs
+    ranked = sorted(records, key=lambda r: -r.get("loc", 0))[:GRAPH_NODE_CAP]
+    kept = {file_id(r["path"]) for r in ranked}
+    nodes = [
+        {
+            "id": file_id(r["path"]),
+            "path": r["path"],
+            "loc": r.get("loc", 0),
+            "ghost": r["path"] in ghost_paths,
+        }
+        for r in ranked
+    ]
+    edges = [
+        {"source": src, "target": dst}
+        for src, dst, data in graph.edges(data=True)
+        if data.get("type") == "imports_resolved"
+        and src in kept
+        and dst in kept
+    ]
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "truncated": len(records) > GRAPH_NODE_CAP,
+    }
 
 
 def build_report(records, graph, sources, repo_label="local"):
@@ -22,6 +58,7 @@ def build_report(records, graph, sources, repo_label="local"):
     cost_summary = cost.summarize(scored, records, graph, sources)
     debt_report = debt.analyze_debt(records, graph, sources)
     enriched = cost_summary["ghosts"]
+    ghost_paths = {g["path"] for g in enriched if g["ghost_kind"] == "file"}
     return {
         "schema": REPORT_SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -43,6 +80,7 @@ def build_report(records, graph, sources, repo_label="local"):
         },
         "ghosts": enriched,
         "debt": debt_report,
+        "graph": _export_graph(graph, records, ghost_paths),
         "cost_model": {
             "params": cost_summary["params"],
             "llm_pricing": llm_pricing.estimate_llm_cost(

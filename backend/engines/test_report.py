@@ -51,6 +51,36 @@ def test_report_contract(tmp_path):
     json.dumps(report)  # the dashboard consumes this as JSON
 
 
+def test_graph_export_contract(tmp_path):
+    report = _report(tmp_path)
+    graph = report["graph"]
+    assert graph["truncated"] is False
+    node_ids = {n["id"] for n in graph["nodes"]}
+    assert len(graph["nodes"]) == 3
+    for node in graph["nodes"]:
+        assert {"id", "path", "loc", "ghost"} <= set(node)
+    ghosts = {g["path"] for g in report["ghosts"] if g["ghost_kind"] == "file"}
+    flagged = {n["path"] for n in graph["nodes"] if n["ghost"]}
+    assert flagged == ghosts, "graph ghost flags must match the ghost list"
+    for edge in graph["edges"]:
+        assert edge["source"] in node_ids and edge["target"] in node_ids
+        assert edge["source"] != edge["target"]
+
+
+def test_graph_export_caps_large_repo(tmp_path):
+    from engines.report import GRAPH_NODE_CAP, _export_graph
+
+    for i in range(GRAPH_NODE_CAP + 50):
+        _write(tmp_path, f"mod{i}.py", f"VALUE = {i}\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    exported = _export_graph(graph, records, set())
+    assert len(exported["nodes"]) == GRAPH_NODE_CAP
+    assert exported["truncated"] is True
+
+
 def test_cli_report_flag(tmp_path, capsys):
     _write(tmp_path, "main.py", 'if __name__ == "__main__":\n    print("hi")\n')
     assert main(["--report", str(tmp_path)]) == 0

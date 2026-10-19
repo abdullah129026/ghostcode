@@ -33,7 +33,7 @@ def test_successful_job_serves_fixture_report(monkeypatch):
     job = store.create("https://github.com/acme/widgets.git")
     run_job(store, job.id)
     assert job.status == "done"
-    assert job.report["schema"] == 1
+    assert job.report["schema"] == 2
     assert job.report["repo"] == "acme/widgets"
     assert job.report["summary"]["files"] > 0
     assert job.finished_at is not None

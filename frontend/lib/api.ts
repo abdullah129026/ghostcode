@@ -34,6 +34,24 @@ export interface ReportSummary {
   };
 }
 
+export interface GraphNode {
+  id: string;
+  path: string;
+  loc: number;
+  ghost: boolean;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface ReportGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+}
+
 export interface Report {
   schema: number;
   generated_at: string;
@@ -41,6 +59,7 @@ export interface Report {
   summary: ReportSummary;
   ghosts: GhostEntry[];
   debt: unknown;
+  graph: ReportGraph;
   cost_model: unknown;
 }
 
