@@ -12,3 +12,6 @@ starlette==1.8.0
 uvicorn==0.54.0
 # Test-only: starlette 1.x TestClient speaks httpx2 (OSV-clean 2026-10-18).
 httpx2==2.13.1
+# Day 6: auto-PR. PyGithub 2.10.0 + requests 2.34.2 + pyjwt 2.15.1 +
+# urllib3 2.8.0 all OSV-clean (checked 2026-10-20).
+PyGithub==2.10.0

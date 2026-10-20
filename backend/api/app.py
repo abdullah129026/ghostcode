@@ -16,12 +16,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import jobs, security
-from .models import AnalyzeRequest, JobAccepted, JobStatus
+from autopr import select
+
+from . import jobs, pr_jobs, security
+from .models import (
+    AnalyzeRequest,
+    JobAccepted,
+    JobStatus,
+    PrJobAccepted,
+    PrJobStatus,
+    PrRequest,
+)
 
 log = logging.getLogger("ghostcode.api")
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 _HTTP_CODES = {
     404: "not_found",
@@ -108,6 +117,7 @@ def create_app() -> FastAPI:
         )
 
     app.state.jobs = jobs.JobStore()
+    app.state.pr_jobs = pr_jobs.PrStore()
     app.state.analyze_limiter = security.limiter_from_env(
         "GHOSTCODE_ANALYZE_RATE", 20, 5
     )
@@ -153,6 +163,73 @@ def create_app() -> FastAPI:
             finished_at=job.finished_at,
             report_url=f"/report/{job.id}" if job.status == "done" else None,
             error=job.error,
+        )
+
+    @app.post(
+        "/pr",
+        status_code=202,
+        response_model=PrJobAccepted,
+        dependencies=[Depends(_limit_analyze)],
+    )
+    def open_pr(body: PrRequest, request: Request):
+        # the token only ever leaves this function inside the worker
+        # thread's arguments; it is never stored, logged, or echoed.
+        store: jobs.JobStore = request.app.state.jobs
+        job = _job_or_404(store, body.job_id)
+        if job.status != "done":
+            code = "not_ready" if job.status in ("queued", "running") else "report_failed"
+            return JSONResponse(
+                status_code=409 if code == "not_ready" else 422,
+                content=error_body(code, f"analysis is {job.status}"),
+            )
+        try:
+            selected = select.select_files(job.report, body.files)
+        except select.SelectionError as exc:
+            return JSONResponse(
+                status_code=422, content=error_body(exc.code, exc.message)
+            )
+        pr_store: pr_jobs.PrStore = request.app.state.pr_jobs
+        pr_job = pr_store.create(job.id, job.repo, selected)
+        threading.Thread(
+            target=pr_jobs.run_pr_job,
+            args=(
+                pr_store,
+                pr_job.id,
+                store,
+                job.id,
+                body.github_token.get_secret_value(),
+                body.files,
+            ),
+            daemon=True,
+        ).start()
+        log.info(
+            "pr accepted pr_job_id=%s repo=%s files=%d",
+            pr_job.id,
+            pr_job.repo,
+            len(selected),
+        )
+        return PrJobAccepted(
+            pr_job_id=pr_job.id, status="queued", poll_url=f"/pr-jobs/{pr_job.id}"
+        )
+
+    @app.get(
+        "/pr-jobs/{pr_job_id}",
+        response_model=PrJobStatus,
+        dependencies=[Depends(_limit_read)],
+    )
+    def pr_job_status(pr_job_id: str, request: Request):
+        pr_job = _job_or_404(request.app.state.pr_jobs, pr_job_id)
+        return PrJobStatus(
+            pr_job_id=pr_job.id,
+            status=pr_job.status,
+            repo=pr_job.repo,
+            files=pr_job.files,
+            created_at=pr_job.created_at,
+            started_at=pr_job.started_at,
+            finished_at=pr_job.finished_at,
+            pr_url=pr_job.pr_url,
+            test_summary=pr_job.test_summary,
+            error=pr_job.error,
         )
 
     @app.get("/report/{job_id}", dependencies=[Depends(_limit_read)])
