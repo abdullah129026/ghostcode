@@ -14,6 +14,7 @@ export default function PrPreview({
   sandboxLine,
   sample = false,
   backHref,
+  action,
 }: {
   title: string;
   summary: string;
@@ -21,6 +22,7 @@ export default function PrPreview({
   sandboxLine: string;
   sample?: boolean;
   backHref: string;
+  action?: React.ReactNode;
 }) {
   return (
     <div>
@@ -52,16 +54,21 @@ export default function PrPreview({
 
       <div className="mt-8 rounded-lg border border-line bg-white p-6">
         <p className="text-sm">{sandboxLine}</p>
-        <button
-          disabled
-          title="Auto-PR ships on Day 6"
-          className="mt-4 cursor-not-allowed rounded-md bg-moss/40 px-5 py-2.5 text-sm font-medium text-white"
-        >
-          Waiting for Day 6 auto-PR
-        </button>
-        <p className="mt-3 text-sm text-ink-soft">
-          Deletions ship as draft PRs. Nothing is merged without your review.
-        </p>
+        {action ?? (
+          <>
+            <button
+              disabled
+              title="Auto-PR ships on Day 6"
+              className="mt-4 cursor-not-allowed rounded-md bg-moss/40 px-5 py-2.5 text-sm font-medium text-white"
+            >
+              Waiting for Day 6 auto-PR
+            </button>
+            <p className="mt-3 text-sm text-ink-soft">
+              Deletions ship as draft PRs. Nothing is merged without your
+              review.
+            </p>
+          </>
+        )}
       </div>
 
       <p className="mt-8 text-sm text-ink-soft">
