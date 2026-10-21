@@ -265,6 +265,23 @@ def _extract_js(root):
             if record is not None:
                 kind, payload = record
                 (imports if kind == "import" else calls).append(payload)
+        elif node.type in ("jsx_opening_element", "jsx_self_closing_element"):
+            # `<Progress/>` is a real reference to the component; lowercase
+            # names are intrinsic elements (<div>), not references.
+            name_node = next((c for c in node.children
+                              if c.type in ("identifier", "jsx_identifier",
+                                            "nested_identifier")), None)
+            if name_node is not None:
+                text = _text(name_node).split(".")[0]
+                if text[:1].isupper():
+                    calls.append(schema.call_record(text, None,
+                                                    _lineno(name_node)))
+        elif node.type == "jsx_expression":
+            # `{onSelect}` and `{cond ? undefined : onRerun}`: identifiers
+            # in JSX expressions are references. Recorded as calls so local
+            # and imported names resolve through the usual machinery.
+            for ref in _jsx_refs(node):
+                calls.append(schema.call_record(ref, None, _lineno(node)))
         elif node.type == "assignment_expression":
             exports.extend(_js_cjs_export(node))
     return imports, defs, exports, calls, default_export
@@ -381,6 +398,34 @@ def _js_call(node, ancestors):
     else:
         receiver, name = None, dotted
     return ("call", schema.call_record(name, receiver, _lineno(node)))
+
+
+def _js_dotted(node):
+    obj = node.child_by_field_name("object")
+    prop = node.child_by_field_name("property")
+    if obj is None or prop is None:
+        return _text(node)
+    head = _js_dotted(obj) if obj.type == "member_expression" else _text(obj)
+    return head + "." + _text(prop)
+
+
+def _jsx_refs(node):
+    """Identifier references inside a JSX expression.
+
+    Nested calls are skipped (their function and arguments are recorded
+    separately); member expressions contribute their base object.
+    """
+    refs = []
+    for child in node.children:
+        if child.type == "call_expression":
+            continue
+        if child.type == "identifier":
+            refs.append(_text(child))
+        elif child.type == "member_expression":
+            refs.append(_js_dotted(child).split(".")[0])
+        else:
+            refs.extend(_jsx_refs(child))
+    return refs
 
 
 def _js_require_names(ancestors):

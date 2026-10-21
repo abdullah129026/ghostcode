@@ -414,3 +414,85 @@ def test_constructor_and_dts_symbols_are_live(tmp_path):
     assert ("lib.ts", "open") not in sym_ghosts
     assert ("types.d.ts", "Widget") not in sym_ghosts
     assert ("types.d.ts", "render") not in sym_ghosts
+
+
+def test_resolve_js_at_alias(tmp_path):
+    """Day 7 dogfood: the frontend imports everything via `@/`.
+
+    `@/lib/format` mirrors the Next.js tsconfig default `@/* -> ./*`:
+    resolve against the nearest ancestor directory of the importing file.
+    """
+    (tmp_path / "frontend" / "lib").mkdir(parents=True)
+    (tmp_path / "frontend" / "lib" / "format.ts").write_text("")
+    (tmp_path / "frontend" / "components").mkdir()
+    root = str(tmp_path)
+    assert resolve_module(root, "frontend/components/X.tsx", "typescript",
+                          "@/lib/format") == ["frontend/lib/format.ts"]
+    assert resolve_module(root, "frontend/components/X.tsx", "typescript",
+                          "@/nope") == []
+    assert resolve_module(root, "frontend/components/X.tsx", "typescript",
+                          "react") == []  # bare stays external
+
+
+def test_dynamic_import_uses_default_export(tmp_path):
+    """Day 7 dogfood: `next/dynamic(() => import("./Canvas"))` renders
+    the default export; the dynamic import keeps it live."""
+    (tmp_path / "components").mkdir()
+    (tmp_path / "components" / "Canvas.tsx").write_text(
+        "export default function Canvas() { return null; }")
+    (tmp_path / "view.tsx").write_text(
+        "const Canvas = dynamic(() => import(\"./components/Canvas\"));\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("components/Canvas.tsx", "Canvas") not in sym_ghosts
+
+
+def test_jsx_references_keep_symbols_live(tmp_path):
+    """Day 7 dogfood: `<Progress/>` and `onSelect={onSelect}` in JSX are
+    real references; components and handlers used only through JSX are
+    not dead."""
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "page.tsx").write_text(
+        "async function onSelect() {}\n"
+        "function Progress() { return null; }\n"
+        "function neverUsed() { return 1; }\n"
+        "export default function Page() {\n"
+        "  return <div onClick={onSelect}><Progress /></div>;\n"
+        "}\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("app/page.tsx", "onSelect") not in sym_ghosts
+    assert ("app/page.tsx", "Progress") not in sym_ghosts
+    assert ("app/page.tsx", "Page") not in sym_ghosts
+    assert ("app/page.tsx", "neverUsed") in sym_ghosts
+
+
+def test_nested_jsx_expressions_keep_symbols_live(tmp_path):
+    """`onClick={cond ? undefined : onRerun}`: references nested inside
+    JSX expressions are still references."""
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "page.tsx").write_text(
+        "function onRerun() {}\n"
+        "function dead() {}\n"
+        "export default function Page({cond}) {\n"
+        "  return <button onClick={cond ? undefined : onRerun}>x</button>;\n"
+        "}\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("app/page.tsx", "onRerun") not in sym_ghosts
+    assert ("app/page.tsx", "dead") in sym_ghosts

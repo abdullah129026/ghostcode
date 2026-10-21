@@ -79,9 +79,16 @@ def _resolve_python(root, from_path, specifier, source_roots):
 
 
 def _resolve_js(root, from_path, specifier):
+    if specifier.startswith("@/"):
+        return _resolve_at_alias(root, from_path, specifier[2:])
     if not specifier.startswith("."):
         return []  # bare specifier: node_modules or a builtin, external
     base = _norm(os.path.join(os.path.dirname(from_path), specifier))
+    return _probe_js_base(root, base)
+
+
+def _probe_js_base(root, base):
+    """All files a JS base path could point at (maybe none)."""
     if _isfile(root, base):
         return [base]
     found = []
@@ -89,10 +96,31 @@ def _resolve_js(root, from_path, specifier):
         if _isfile(root, base + ext):
             found.append(_norm(base + ext))
     for ext in _JS_EXTENSIONS:
-        index = os.path.join(base, "index" + ext)
+        index = _norm(os.path.join(base, "index" + ext))
         if _isfile(root, index):
-            found.append(_norm(index))
+            found.append(index)
     return found
+
+
+def _resolve_at_alias(root, from_path, rest):
+    """Resolve a `@/` path alias (the Next.js/Vite `@/* -> ./*` default).
+
+    Tries the importing file's ancestor directories nearest-first, so
+    `@/lib/format` from `frontend/components/X.tsx` lands on
+    `frontend/lib/format.ts` without parsing tsconfig files.
+    """
+    # ponytail: ancestor walk instead of parsing compilerOptions.paths;
+    # only the `@/* -> ./*` default mapping is honored. Parse tsconfig
+    # paths if a repo ever needs a custom alias.
+    directory = os.path.dirname(from_path)
+    while True:
+        hit = _probe_js_base(root, _norm(os.path.join(directory, rest)))
+        if hit:
+            return hit
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return []
+        directory = parent
 
 
 def import_edges(root, records):
@@ -333,6 +361,18 @@ def use_edges(root, records):
         for _local, target in default.items():
             for hit in _resolve_default(root, by_path, target):
                 _add_sym_edge(edges, seen, record["path"], hit, "uses")
+        for imp in record["imports"]:
+            if imp["kind"] != "dynamic":
+                continue
+            # `import("./chunk")` (e.g. next/dynamic) renders the target's
+            # default export. Without this every lazily-loaded component
+            # looks dead.
+            targets = resolve_module(root, record["path"],
+                                     record["language"], imp["module"],
+                                     source_roots)
+            for target in targets:
+                for hit in _resolve_default(root, by_path, target):
+                    _add_sym_edge(edges, seen, record["path"], hit, "uses")
     return edges
 
 
