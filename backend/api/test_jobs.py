@@ -3,9 +3,14 @@ always cleaned up, and failures settle as job errors instead of raising."""
 
 import os
 import shutil
+import subprocess
+from unittest import mock
+
+import pytest
 
 from api import jobs
 from api.jobs import JobFailed, JobStore, run_job
+from ingest.walk import WalkError
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "..", "ingest", "fixtures", "py_app"
@@ -64,3 +69,33 @@ def test_store_evicts_oldest_first():
     store.create("https://github.com/a/2.git")
     store.create("https://github.com/a/3.git")
     assert store.get(first.id) is None
+
+
+def test_clone_timeout_maps_to_clone_timeout(monkeypatch):
+    monkeypatch.setattr(
+        "subprocess.run",
+        mock.Mock(side_effect=subprocess.TimeoutExpired("git clone", 120)),
+    )
+    with pytest.raises(JobFailed) as exc_info:
+        jobs._clone("https://github.com/acme/widgets.git", "/tmp/nope")
+    assert exc_info.value.code == "clone_timeout"
+    assert "120" in exc_info.value.message
+
+
+def test_clone_failure_truncates_stderr_to_300_chars(monkeypatch):
+    proc = mock.Mock(returncode=128, stdout="", stderr="fatal: boom\n" * 100)
+    monkeypatch.setattr("subprocess.run", mock.Mock(return_value=proc))
+    with pytest.raises(JobFailed) as exc_info:
+        jobs._clone("https://github.com/acme/widgets.git", "/tmp/nope")
+    assert exc_info.value.code == "clone_failed"
+    assert len(exc_info.value.message) <= 300
+    assert exc_info.value.message.startswith("fatal: boom")
+
+
+def test_pipeline_walk_error_maps_to_repo_too_large(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "analyze", mock.Mock(side_effect=WalkError("cap exceeded"))
+    )
+    with pytest.raises(JobFailed) as exc_info:
+        jobs._run_pipeline("/tmp/nope", "acme/widgets")
+    assert exc_info.value.code == "repo_too_large"
