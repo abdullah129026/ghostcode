@@ -47,7 +47,8 @@ def build_graph(file_records):
                            name=definition["name"], file=record["path"],
                            lineno=definition["lineno"],
                            end_lineno=definition["end_lineno"],
-                           parent=definition["parent"])
+                           parent=definition["parent"],
+                           decorated=definition.get("decorated", False))
             graph.add_edge(fid, sid, type="defines")
             key = (record["path"], definition["kind"], definition["name"])
             symbol_index.setdefault(key, []).append(sid)

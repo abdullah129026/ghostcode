@@ -305,3 +305,112 @@ def test_from_import_binds_submodule_for_attribute_calls(tmp_path):
     sym_ghosts = {(_norm_path(s["path"]), s["name"])
                   for s in report["symbols"]}
     assert ("pkg/schema.py", "def_record") not in sym_ghosts
+
+
+def test_framework_convention_files_are_entries(tmp_path):
+    """Day 7 dogfood: Next.js router files, tooling configs, .d.ts files
+    and conftest.py are framework/tooling entries, never ghosts."""
+    (tmp_path / "app" / "api").mkdir(parents=True)
+    (tmp_path / "app" / "page.tsx").write_text(
+        "export default function Page() { return null; }")
+    (tmp_path / "app" / "layout.tsx").write_text(
+        "export default function Layout({c}) { return c; }")
+    (tmp_path / "app" / "api" / "route.ts").write_text(
+        "export function GET() {}")
+    (tmp_path / "next.config.mjs").write_text("export default {};")
+    (tmp_path / "tailwind.config.ts").write_text("export default {};")
+    (tmp_path / "types.d.ts").write_text("declare module 'x';")
+    (tmp_path / "conftest.py").write_text("import pytest\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    got = {_norm_path(p) for p in entry_files(records)}
+    assert {"app/page.tsx", "app/layout.tsx", "app/api/route.ts",
+            "next.config.mjs", "tailwind.config.ts", "types.d.ts",
+            "conftest.py"} <= got
+
+
+def test_framework_entry_rules_stay_tight(tmp_path):
+    """The new entry rules must not swallow real ghosts."""
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "page.tsx").write_text(
+        "export default function Page() { return null; }")
+    (tmp_path / "dead.ts").write_text(
+        "export function neverCalled() { return 1; }")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    file_ghosts = {_norm_path(f["path"]) for f in report["files"]}
+    assert "app/page.tsx" not in file_ghosts
+    assert "dead.ts" in file_ghosts
+
+
+def test_decorated_functions_are_live(tmp_path):
+    """Day 7 dogfood: FastAPI route handlers are registered by decorator
+    (@app.get), never called by name. Any decorator keeps the def live:
+    the runtime invokes or transforms it, so no static call edge can."""
+    (tmp_path / "app.py").write_text(
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n"
+        "\n"
+        "@app.get(\"/health\")\n"
+        "def health():\n"
+        "    return {\"ok\": True}\n"
+        "\n"
+        "def dead():\n"
+        "    return 0\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("app.py", "health") not in sym_ghosts
+    assert ("app.py", "dead") in sym_ghosts
+
+
+def test_default_export_of_entry_file_is_live(tmp_path):
+    """Day 7 dogfood: Next.js renders a page's default export; nothing
+    imports it, but it is framework-invoked, not dead."""
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "page.tsx").write_text(
+        "export default function Landing() { return null; }")
+    (tmp_path / "app" / "dead.tsx").write_text(
+        "export default function Dead() { return null; }")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("app/page.tsx", "Landing") not in sym_ghosts
+    assert ("app/dead.tsx", "Dead") in sym_ghosts  # not an entry: still dead
+
+
+def test_constructor_and_dts_symbols_are_live(tmp_path):
+    """`constructor` is invoked by `new`, never called by name; `.d.ts`
+    declarations are type-level and erased at compile time."""
+    (tmp_path / "lib.ts").write_text(
+        "export class Box {\n"
+        "  constructor() {}\n"
+        "  open() {}\n"
+        "}\n"
+        "new Box().open();\n")
+    (tmp_path / "types.d.ts").write_text(
+        "declare class Widget {\n"
+        "  render(): void;\n"
+        "}\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("lib.ts", "constructor") not in sym_ghosts
+    assert ("lib.ts", "open") not in sym_ghosts
+    assert ("types.d.ts", "Widget") not in sym_ghosts
+    assert ("types.d.ts", "render") not in sym_ghosts

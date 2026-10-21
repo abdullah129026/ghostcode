@@ -4,7 +4,7 @@ The schema version is bumped whenever a field is added, renamed, or
 removed, so old reports and the dashboard can keep reading what they know.
 """
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def file_record(path, language, loc, imports, defs, exports, calls,
@@ -35,13 +35,18 @@ def import_record(module, names=(), alias=None, lineno=None, kind="import"):
     }
 
 
-def def_record(kind, name, lineno, end_lineno, parent=None):
+def def_record(kind, name, lineno, end_lineno, parent=None,
+               decorated=False):
     return {
         "kind": kind,  # "function" | "class" | "method"
         "name": name,
         "lineno": lineno,
         "end_lineno": end_lineno,
         "parent": parent,
+        # True when the def carries a decorator (@app.get, @dataclass):
+        # the runtime invokes or transforms it, so no static call edge
+        # ever points at it. Added in schema 2 (Day 7 dogfood).
+        "decorated": decorated,
     }
 
 

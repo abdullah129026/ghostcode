@@ -126,9 +126,12 @@ def _extract_python(root):
             parent = _enclosing_class(ancestors)
             if kind == "function" and parent:
                 kind = "method"
+            decorated = any(a.type == "decorated_definition"
+                            for a in ancestors)
             defs.append(
                 schema.def_record(kind, _text(name), _lineno(node),
-                                   _end_lineno(node), parent)
+                                   _end_lineno(node), parent,
+                                   decorated=decorated)
             )
         elif node.type == "call":
             dynamic = _py_dynamic_import(node)
