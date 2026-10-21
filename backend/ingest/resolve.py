@@ -22,7 +22,26 @@ def _norm(relpath):
     return os.path.normpath(relpath)
 
 
-def resolve_module(root, from_path, language, specifier):
+def _source_roots(records):
+    """Top-level dirs that hold Python modules, e.g. backend/ in a
+    backend/ layout or src/ in a src layout.
+
+    Derived from the records, not the filesystem: a source root is any
+    first path component of a parsed .py file below the repo root. Only
+    consulted when an absolute import fails at the repo root, so flat
+    layouts behave exactly as before.
+    """
+    roots = set()
+    for record in records:
+        if not record["path"].endswith(".py"):
+            continue
+        head, sep, _ = record["path"].partition("/")
+        if sep:
+            roots.add(head)
+    return sorted(roots)
+
+
+def resolve_module(root, from_path, language, specifier, source_roots=()):
     """Repo-relative paths a module specifier could point at (maybe none).
 
     Unresolvable specifiers (stdlib, node_modules, typos) return [] and
@@ -31,11 +50,11 @@ def resolve_module(root, from_path, language, specifier):
     if not specifier:
         return []
     if language == "python":
-        return _resolve_python(root, from_path, specifier)
+        return _resolve_python(root, from_path, specifier, source_roots)
     return _resolve_js(root, from_path, specifier)
 
 
-def _resolve_python(root, from_path, specifier):
+def _resolve_python(root, from_path, specifier, source_roots):
     level = len(specifier) - len(specifier.lstrip("."))
     rest = specifier[level:]
     if level:
@@ -43,13 +62,19 @@ def _resolve_python(root, from_path, specifier):
         for _ in range(level - 1):
             base = os.path.dirname(base)
         parts = rest.split(".") if rest else []
+        bases = (base,)
     else:
-        base, parts = "", specifier.split(".")
-    target = _norm(os.path.join(base, *parts)) if parts else _norm(base)
+        parts = specifier.split(".")
+        # Repo root first, then source roots: every hit is an edge, and
+        # ambiguous hits keep nodes live rather than flagging them.
+        bases = ("",) + tuple(source_roots)
     found = []
-    for candidate in (target + ".py", os.path.join(target, "__init__.py")):
-        if _isfile(root, candidate):
-            found.append(_norm(candidate))
+    for base in bases:
+        target = _norm(os.path.join(base, *parts)) if parts else _norm(base)
+        for candidate in (target + ".py", os.path.join(target, "__init__.py")):
+            candidate = _norm(candidate)
+            if candidate not in found and _isfile(root, candidate):
+                found.append(candidate)
     return found
 
 
@@ -73,17 +98,47 @@ def _resolve_js(root, from_path, specifier):
 def import_edges(root, records):
     """(src_path, dst_path, kind) file -> file edges for resolved imports."""
     edges, seen = [], set()
+    source_roots = _source_roots(records)
     for record in records:
         for imp in record["imports"]:
             targets = resolve_module(root, record["path"],
-                                     record["language"], imp["module"])
+                                     record["language"], imp["module"],
+                                     source_roots)
             for target in targets:
                 _add_file_edge(edges, seen, record["path"], target, imp["kind"])
                 if record["language"] == "python":
                     for parent in _parent_packages(root, target):
                         _add_file_edge(edges, seen, record["path"],
                                        parent, "package")
+            if record["language"] == "python" and imp["kind"] == "from":
+                names = [n["name"] for n in imp.get("names", [])]
+                for target in _submodule_targets(root, record, imp["module"],
+                                                 names, source_roots):
+                    _add_file_edge(edges, seen, record["path"], target,
+                                   "from-submodule")
+                    for parent in _parent_packages(root, target):
+                        _add_file_edge(edges, seen, record["path"],
+                                       parent, "package")
     return edges
+
+
+def _submodule_targets(root, record, module, names, source_roots):
+    """Repo-relative files for submodule names in a from-import.
+
+    `from pkg import sub` links pkg/sub.py when it exists. When it does
+    not, the caller falls back to the package: the name may be a
+    re-exported symbol instead (`from pkg import api`).
+    """
+    dots = len(module) - len(module.lstrip("."))
+    rest = module[dots:]
+    prefix = "." * dots + (rest + "." if rest else "")
+    found = []
+    for name in names:
+        for target in resolve_module(root, record["path"], "python",
+                                     prefix + name, source_roots):
+            if target not in found:
+                found.append(target)
+    return found
 
 
 def _add_file_edge(edges, seen, src, dst, kind):
@@ -117,7 +172,7 @@ def _records_by_path(records):
     return {r["path"]: r for r in records}
 
 
-def _resolve_name(root, by_path, path, name, seen):
+def _resolve_name(root, by_path, path, name, seen, source_roots=()):
     """Chase a name to (path, kind, name), following barrel re-exports.
 
     `from pkg import api` where `pkg/__init__.py` does `from .core import
@@ -137,8 +192,10 @@ def _resolve_name(root, by_path, path, name, seen):
             continue
         if name not in {n["name"] for n in imp.get("names", [])}:
             continue
-        for target in resolve_module(root, path, record["language"], imp["module"]):
-            hit = _resolve_name(root, by_path, target, name, seen)
+        for target in resolve_module(root, path, record["language"],
+                                     imp["module"], source_roots):
+            hit = _resolve_name(root, by_path, target, name, seen,
+                                source_roots)
             if hit is not None:
                 return hit
     return None
@@ -156,7 +213,7 @@ def _resolve_default(root, by_path, target):
             if d["name"] == name]
 
 
-def _import_bindings(root, record):
+def _import_bindings(root, record, source_roots=()):
     """Local names bound by imports: (named, default, namespace) maps.
 
     named:     local -> (target_path, exported_name), e.g. `from m import f`
@@ -166,7 +223,8 @@ def _import_bindings(root, record):
     named, default, namespace = {}, {}, {}
     for imp in record["imports"]:
         targets = resolve_module(root, record["path"],
-                                 record["language"], imp["module"])
+                                 record["language"], imp["module"],
+                                 source_roots)
         if not targets:
             continue
         target = targets[0]
@@ -174,8 +232,18 @@ def _import_bindings(root, record):
             default[imp["default"]] = target
         for n in imp.get("names", []):
             local = n.get("alias") or n["name"]
-            if local:
-                named[local] = (target, n["name"])
+            if not local:
+                continue
+            bound = target
+            if record["language"] == "python" and imp["kind"] == "from":
+                subs = _submodule_targets(root, record, imp["module"],
+                                          [n["name"]], source_roots)
+                if subs:
+                    # `from pkg import submod`: the local name IS the
+                    # submodule, so `schema.def_record()` resolves through
+                    # the submodule file, not the package __init__.
+                    bound = subs[0]
+            named[local] = (bound, n["name"])
         if imp.get("alias") and not imp.get("names") and not imp.get("default"):
             namespace[imp["alias"]] = target  # import * as ns / import x as y
         elif imp["kind"] == "import" and not imp.get("names"):
@@ -188,8 +256,10 @@ def call_edges(root, records):
     """(src, dst_path, dst_kind, dst_name, "call") for resolved call sites."""
     edges, seen = [], set()
     by_path = _records_by_path(records)
+    source_roots = _source_roots(records)
     for record in records:
-        named, default, namespace = _import_bindings(root, record)
+        named, default, namespace = _import_bindings(root, record,
+                                                     source_roots)
         local_defs = {}
         for d in record["defs"]:
             local_defs.setdefault(d["name"], []).append(d["kind"])
@@ -198,7 +268,8 @@ def call_edges(root, records):
             if not name:
                 continue
             hits = _resolve_call(root, by_path, record, named, default,
-                                 namespace, local_defs, name, receiver)
+                                 namespace, local_defs, name, receiver,
+                                 source_roots)
             for hit in hits:
                 key = (record["path"],) + hit + ("call",)
                 if key not in seen:
@@ -208,13 +279,14 @@ def call_edges(root, records):
 
 
 def _resolve_call(root, by_path, record, named, default, namespace,
-                  local_defs, name, receiver):
+                  local_defs, name, receiver, source_roots=()):
     if receiver is None:
         if name in local_defs:
             return [(record["path"], kind, name) for kind in local_defs[name]]
         if name in named:
             target, exported = named[name]
-            hit = _resolve_name(root, by_path, target, exported, set())
+            hit = _resolve_name(root, by_path, target, exported, set(),
+                                source_roots)
             return [hit] if hit else []
         if name in default:
             return _resolve_default(root, by_path, default[name])
@@ -228,12 +300,14 @@ def _resolve_call(root, by_path, record, named, default, namespace,
         return [(record["path"], "method", name)]
     base = receiver.split(".")[0]
     if base in namespace:
-        hit = _resolve_name(root, by_path, namespace[base], name, set())
+        hit = _resolve_name(root, by_path, namespace[base], name, set(),
+                            source_roots)
         return [hit] if hit else []
     if base in named:
         # `from m import obj` then `obj.method()`: obj names a module here
         # often enough (from pkg import submodule) to be worth the chase
-        hit = _resolve_name(root, by_path, named[base][0], name, set())
+        hit = _resolve_name(root, by_path, named[base][0], name, set(),
+                            source_roots)
         return [hit] if hit else []
     return []
 
@@ -247,10 +321,13 @@ def use_edges(root, records):
     """
     edges, seen = [], set()
     by_path = _records_by_path(records)
+    source_roots = _source_roots(records)
     for record in records:
-        named, default, _namespace = _import_bindings(root, record)
+        named, default, _namespace = _import_bindings(root, record,
+                                                      source_roots)
         for _local, (target, exported) in named.items():
-            hit = _resolve_name(root, by_path, target, exported, set())
+            hit = _resolve_name(root, by_path, target, exported, set(),
+                                source_roots)
             if hit:
                 _add_sym_edge(edges, seen, record["path"], hit, "uses")
         for _local, target in default.items():

@@ -30,7 +30,7 @@ def _fixture_ghosts(name):
 
 def test_python_fixture_exact_ghost_set():
     report = _fixture_ghosts("py_app")
-    assert report["schema"] == 1
+    assert report["schema"] == schema.SCHEMA_VERSION
     assert [_norm_path(f["path"]) for f in report["files"]] == ["truly_dead.py"]
     got = {(_norm_path(s["path"]), s["name"]) for s in report["symbols"]}
     assert got == {("utils.py", "stale"), ("pkg/core.py", "internal"),
@@ -39,7 +39,7 @@ def test_python_fixture_exact_ghost_set():
 
 def test_js_fixture_exact_ghost_set():
     report = _fixture_ghosts("js_app")
-    assert report["schema"] == 1
+    assert report["schema"] == schema.SCHEMA_VERSION
     assert [_norm_path(f["path"]) for f in report["files"]] == ["orphan.js"]
     got = {(_norm_path(s["path"]), s["name"]) for s in report["symbols"]}
     assert got == {("lib.js", "unused"), ("cjs.js", "stringify"),
@@ -203,6 +203,105 @@ def test_detect_ghosts_smoke(tmp_path):
     graph = build_graph(records)
     add_resolved_edges(graph, records, root)
     report = detect_ghosts(records, graph)
-    assert report["schema"] == 1
+    assert report["schema"] == schema.SCHEMA_VERSION
     assert [f["path"] for f in report["files"]] == ["dead.py"]
     assert [(s["path"], s["name"]) for s in report["symbols"]] == [("dead.py", "g")]
+
+def test_resolve_python_tries_source_roots(tmp_path):
+    """Day 7 dogfood: GhostCode flagged its own backend as dead.
+
+    A backend/ source layout means `from api.app import x` resolves to
+    backend/api/app.py, not repo-root api/app.py. Absolute imports are
+    tried against the repo root first, then each source root.
+    """
+    (tmp_path / "backend" / "api").mkdir(parents=True)
+    (tmp_path / "backend" / "api" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "api" / "app.py").write_text("")
+    root = str(tmp_path)
+    assert resolve_module(root, "x.py", "python", "api.app") == []
+    assert resolve_module(root, "x.py", "python", "api.app",
+                          ("backend",)) == ["backend/api/app.py"]
+    assert resolve_module(root, "x.py", "python", "api",
+                          ("backend",)) == ["backend/api/__init__.py"]
+    assert resolve_module(root, "x.py", "python", "os",
+                          ("backend",)) == []  # stdlib stays external
+
+
+def test_src_layout_absolute_import_keeps_module_live(tmp_path):
+    """End to end: a test importing through a backend/ layout keeps the
+    module and the imported symbol live (no ghost flags)."""
+    (tmp_path / "backend" / "api").mkdir(parents=True)
+    (tmp_path / "backend" / "api" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "api" / "app.py").write_text(
+        "def create_app():\n    return 1\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_api.py").write_text(
+        "from api.app import create_app\n\n"
+        "def test_x():\n    assert create_app() == 1\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    file_ghosts = {_norm_path(f["path"]) for f in report["files"]}
+    assert "backend/api/app.py" not in file_ghosts
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("backend/api/app.py", "create_app") not in sym_ghosts
+
+
+def test_from_import_of_submodule_links_the_file(tmp_path):
+    """Day 7 dogfood: `from app.routers import analyze` imports the
+    submodule file, not just the package. Without the file edge every
+    FastAPI router looks dead."""
+    (tmp_path / "backend" / "app" / "routers").mkdir(parents=True)
+    (tmp_path / "backend" / "app" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "app" / "routers" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "app" / "routers" / "analyze.py").write_text(
+        "def run():\n    return 1\n")
+    (tmp_path / "backend" / "app" / "main.py").write_text(
+        "from app.routers import analyze\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    file_ghosts = {_norm_path(f["path"]) for f in report["files"]}
+    assert "backend/app/routers/analyze.py" not in file_ghosts
+
+
+def test_relative_from_import_of_submodule_links_the_file(tmp_path):
+    """`from . import pr_jobs` inside backend/api/app.py links
+    backend/api/pr_jobs.py."""
+    (tmp_path / "backend" / "api").mkdir(parents=True)
+    (tmp_path / "backend" / "api" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "api" / "app.py").write_text(
+        "from . import pr_jobs\n")
+    (tmp_path / "backend" / "api" / "pr_jobs.py").write_text(
+        "def run():\n    return 1\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    file_ghosts = {_norm_path(f["path"]) for f in report["files"]}
+    assert "backend/api/pr_jobs.py" not in file_ghosts
+
+
+def test_from_import_binds_submodule_for_attribute_calls(tmp_path):
+    """Day 7 dogfood: `from . import schema` then `schema.def_record()`
+    must resolve through the submodule file, not the package __init__."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "schema.py").write_text(
+        "def def_record():\n    return 1\n")
+    (tmp_path / "pkg" / "user.py").write_text(
+        "from . import schema\nschema.def_record()\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("pkg/schema.py", "def_record") not in sym_ghosts
