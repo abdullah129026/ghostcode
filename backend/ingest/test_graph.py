@@ -496,3 +496,80 @@ def test_nested_jsx_expressions_keep_symbols_live(tmp_path):
                   for s in report["symbols"]}
     assert ("app/page.tsx", "onRerun") not in sym_ghosts
     assert ("app/page.tsx", "dead") in sym_ghosts
+
+
+def test_call_arguments_keep_symbols_live(tmp_path):
+    """Day 7 dogfood: `Depends(_limit)` and `Thread(target=_run)` pass
+    the function by reference. Argument names are uses, not just calls."""
+    (tmp_path / "app.py").write_text(
+        "from fastapi import Depends\n"
+        "def _limit():\n    return True\n"
+        "def dead():\n    return 0\n"
+        "def start():\n"
+        "    Depends(_limit)\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("app.py", "_limit") not in sym_ghosts
+    assert ("app.py", "dead") in sym_ghosts
+
+
+def test_js_call_arguments_keep_symbols_live(tmp_path):
+    (tmp_path / "a.js").write_text(
+        "function onKey() {}\n"
+        "function dead() {}\n"
+        "window.addEventListener(\"keydown\", onKey);\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("a.js", "onKey") not in sym_ghosts
+    assert ("a.js", "dead") in sym_ghosts
+
+
+def test_returned_names_keep_symbols_live(tmp_path):
+    """`return _inner`: a returned closure is used by the caller, not dead."""
+    (tmp_path / "a.py").write_text(
+        "def make():\n"
+        "    def _inner():\n"
+        "        return 1\n"
+        "    return _inner\n"
+        "def dead():\n"
+        "    return 0\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("a.py", "_inner") not in sym_ghosts
+    assert ("a.py", "dead") in sym_ghosts
+
+
+def test_annotation_names_keep_symbols_live(tmp_path):
+    """`def f(req: CodeRequest)`: names in type position are references,
+    not dead code."""
+    (tmp_path / "a.py").write_text(
+        "class CodeRequest:\n"
+        "    pass\n"
+        "class Dead:\n"
+        "    pass\n"
+        "def f(req: CodeRequest) -> int:\n"
+        "    return 1\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("a.py", "CodeRequest") not in sym_ghosts
+    assert ("a.py", "Dead") in sym_ghosts

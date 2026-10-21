@@ -139,6 +139,24 @@ def _extract_python(root):
                 imports.append(dynamic)
             else:
                 calls.append(_py_call(node))
+        elif node.type == "return_statement":
+            # `return _inner`: a returned name is used by the caller.
+            for child in node.children:
+                for ref in _py_arg_refs(child):
+                    if "." in ref:
+                        receiver, _, name = ref.rpartition(".")
+                    else:
+                        receiver, name = None, ref
+                    calls.append(schema.call_record(name, receiver,
+                                                    _lineno(child)))
+        elif node.type == "type":
+            # `def f(req: CodeRequest)`: names in type position are
+            # references. Nested types (Optional[X]) arrive as their own
+            # `type` nodes, so direct children suffice.
+            for child in node.children:
+                if child.type == "identifier":
+                    calls.append(schema.call_record(_text(child), None,
+                                                    _lineno(child)))
     return imports, defs, exports, calls
 
 
@@ -198,7 +216,41 @@ def _py_call(node):
         receiver, _, name = dotted.rpartition(".")
     else:
         receiver, name = None, dotted
-    return schema.call_record(name, receiver, _lineno(node))
+    return schema.call_record(name, receiver, _lineno(node),
+                              args=_py_call_args(node))
+
+
+def _py_call_args(node):
+    """Name references in argument position (callbacks, Depends, thread
+    targets). Nested calls are recorded as calls themselves; literals,
+    splats and subscripts are not name references."""
+    arguments = node.child_by_field_name("arguments")
+    if arguments is None:
+        return []
+    refs = []
+    for child in arguments.children:
+        refs.extend(_py_arg_refs(child))
+    return refs
+
+
+def _py_arg_refs(node):
+    if node.type == "identifier":
+        return [_text(node)]
+    if node.type == "attribute":
+        return [_py_dotted(node)]
+    if node.type == "keyword_argument":
+        value = node.child_by_field_name("value")
+        return _py_arg_refs(value) if value is not None else []
+    return []
+
+
+def _py_dotted(node):
+    obj = node.child_by_field_name("object")
+    attr = node.child_by_field_name("attribute")
+    if obj is None or attr is None:
+        return _text(node)
+    head = _py_dotted(obj) if obj.type == "attribute" else _text(obj)
+    return head + "." + _text(attr)
 
 
 _DYNAMIC_CALLS = {"importlib.import_module", "__import__"}
@@ -397,7 +449,27 @@ def _js_call(node, ancestors):
         receiver, _, name = dotted.rpartition(".")
     else:
         receiver, name = None, dotted
-    return ("call", schema.call_record(name, receiver, _lineno(node)))
+    return ("call", schema.call_record(name, receiver, _lineno(node),
+                                       args=_js_call_args(node)))
+
+
+def _js_call_args(node):
+    """Name references in argument position, mirroring _py_call_args."""
+    arguments = node.child_by_field_name("arguments")
+    if arguments is None:
+        return []
+    refs = []
+    for child in arguments.children:
+        refs.extend(_js_arg_refs(child))
+    return refs
+
+
+def _js_arg_refs(node):
+    if node.type == "identifier":
+        return [_text(node)]
+    if node.type == "member_expression":
+        return [_js_dotted(node)]
+    return []
 
 
 def _js_dotted(node):

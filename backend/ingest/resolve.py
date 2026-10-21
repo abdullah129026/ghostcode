@@ -303,7 +303,44 @@ def call_edges(root, records):
                 if key not in seen:
                     seen.add(key)
                     edges.append((record["path"],) + hit + ("call",))
+            for arg in call.get("args", ()):
+                for hit in _resolve_arg(root, by_path, record, named,
+                                        default, namespace, local_defs, arg,
+                                        source_roots):
+                    key = (record["path"],) + hit + ("uses",)
+                    if key not in seen:
+                        seen.add(key)
+                        edges.append((record["path"],) + hit + ("uses",))
     return edges
+
+
+def _resolve_arg(root, by_path, record, named, default, namespace,
+                 local_defs, arg, source_roots):
+    """A name referenced in argument position is used: resolve it like a
+    call target and return the hit, so callbacks and dependency-injected
+    functions never look dead."""
+    if "." not in arg:
+        if arg in local_defs:
+            return [(record["path"], kind, arg) for kind in local_defs[arg]]
+        if arg in named:
+            target, exported = named[arg]
+            hit = _resolve_name(root, by_path, target, exported, set(),
+                                source_roots)
+            return [hit] if hit else []
+        if arg in default:
+            return _resolve_default(root, by_path, default[arg])
+        return []
+    base, _, attr = arg.partition(".")
+    target = None
+    if base in namespace:
+        target = namespace[base]
+    elif base in named:
+        target = named[base][0]
+    if target is None:
+        return []
+    hit = _resolve_name(root, by_path, target, attr.partition(".")[0],
+                        set(), source_roots)
+    return [hit] if hit else []
 
 
 def _resolve_call(root, by_path, record, named, default, namespace,

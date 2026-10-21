@@ -4,7 +4,7 @@ The schema version is bumped whenever a field is added, renamed, or
 removed, so old reports and the dashboard can keep reading what they know.
 """
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def file_record(path, language, loc, imports, defs, exports, calls,
@@ -50,5 +50,13 @@ def def_record(kind, name, lineno, end_lineno, parent=None,
     }
 
 
-def call_record(name, receiver, lineno):
-    return {"name": name, "receiver": receiver, "lineno": lineno}
+def call_record(name, receiver, lineno, args=()):
+    return {
+        "name": name,
+        "receiver": receiver,
+        "lineno": lineno,
+        # Names referenced in argument position (`Depends(_limit)`,
+        # `Thread(target=_run)`): a reference is a use. Added in schema 3
+        # (Day 7 dogfood); nested calls are recorded separately.
+        "args": list(args),
+    }
