@@ -22,12 +22,12 @@ from ingest.cli import analyze
 from ingest.graph import add_resolved_edges, build_graph
 from ingest.walk import WalkError
 
-from .security import repo_label
+from .security import env_int, repo_label
 
 log = logging.getLogger("ghostcode.jobs")
 
-CLONE_TIMEOUT = int(os.environ.get("GHOSTCODE_CLONE_TIMEOUT", "120"))
-MAX_JOBS = int(os.environ.get("GHOSTCODE_MAX_JOBS", "100"))
+CLONE_TIMEOUT = env_int("GHOSTCODE_CLONE_TIMEOUT", 120)
+MAX_JOBS = env_int("GHOSTCODE_MAX_JOBS", 100)
 
 
 class JobFailed(Exception):

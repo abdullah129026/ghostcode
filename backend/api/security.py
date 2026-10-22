@@ -6,11 +6,14 @@ is stdlib-only on purpose: a token bucket needs a clock and a counter,
 not a dependency.
 """
 
+import logging
 import os
 import re
 import threading
 import time
 from urllib.parse import urlparse
+
+log = logging.getLogger("ghostcode.security")
 
 _OWNER_REPO = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 
@@ -115,12 +118,35 @@ class RateLimiter:
             return False, retry_after
 
 
+def _env_number(name: str, default, parse):
+    """Read a numeric env var, falling back to default on garbage.
+
+    A mistyped operator setting used to raise ValueError at import time
+    and take the whole service down; now it logs a warning and uses
+    the default.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return parse(raw)
+    except (TypeError, ValueError):
+        log.warning("invalid %s=%r, using default %s", name, raw, default)
+        return default
+
+
+def env_float(name: str, default: float) -> float:
+    return _env_number(name, default, float)
+
+
+def env_int(name: str, default: int) -> int:
+    return _env_number(name, default, int)
+
+
 def limiter_from_env(
     prefix: str, default_per_minute: float, default_burst: int
 ) -> RateLimiter:
     return RateLimiter(
-        per_minute=float(
-            os.environ.get(f"{prefix}_PER_MIN", default_per_minute)
-        ),
-        burst=int(os.environ.get(f"{prefix}_BURST", default_burst)),
+        per_minute=env_float(f"{prefix}_PER_MIN", default_per_minute),
+        burst=env_int(f"{prefix}_BURST", default_burst),
     )

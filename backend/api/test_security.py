@@ -86,3 +86,33 @@ def test_limiter_refills_over_time(monkeypatch):
     assert limiter.allow("1.2.3.4")[0] is False
     now[0] += 61.0
     assert limiter.allow("1.2.3.4")[0] is True
+
+
+def test_limiter_from_env_uses_defaults_when_unset(monkeypatch):
+    from api.security import limiter_from_env
+
+    monkeypatch.delenv("GHOSTCODE_ANALYZE_RATE_PER_MIN", raising=False)
+    monkeypatch.delenv("GHOSTCODE_ANALYZE_RATE_BURST", raising=False)
+    limiter = limiter_from_env("GHOSTCODE_ANALYZE_RATE", 20, 5)
+    assert limiter._burst == 5
+    assert sum(limiter.allow("1.2.3.4")[0] for _ in range(6)) == 5
+
+
+def test_limiter_from_env_falls_back_on_garbage(monkeypatch):
+    from api.security import limiter_from_env
+
+    monkeypatch.setenv("GHOSTCODE_ANALYZE_RATE_PER_MIN", "abc")
+    monkeypatch.setenv("GHOSTCODE_ANALYZE_RATE_BURST", "")
+    limiter = limiter_from_env("GHOSTCODE_ANALYZE_RATE", 20, 5)
+    assert limiter._burst == 5
+    assert sum(limiter.allow("1.2.3.4")[0] for _ in range(6)) == 5
+
+
+def test_limiter_from_env_reads_valid_values(monkeypatch):
+    from api.security import limiter_from_env
+
+    monkeypatch.setenv("GHOSTCODE_ANALYZE_RATE_PER_MIN", "60")
+    monkeypatch.setenv("GHOSTCODE_ANALYZE_RATE_BURST", "2")
+    limiter = limiter_from_env("GHOSTCODE_ANALYZE_RATE", 20, 5)
+    assert limiter._burst == 2
+    assert sum(limiter.allow("1.2.3.4")[0] for _ in range(3)) == 2
