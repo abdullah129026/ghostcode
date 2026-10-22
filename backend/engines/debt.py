@@ -14,8 +14,6 @@ import hashlib
 
 import networkx as nx
 
-from ingest.graph import file_id
-
 MAX_REPORTED_CYCLES = 25
 HUGE_FILE_LOC = 800
 MIN_DUP_LINES = 5

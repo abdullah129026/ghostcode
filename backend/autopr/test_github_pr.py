@@ -13,7 +13,6 @@ from autopr.github_pr import (
     open_pull_request,
     pr_body,
     push_branch,
-    redact,
 )
 
 TOKEN = "ghp_testtoken123"
