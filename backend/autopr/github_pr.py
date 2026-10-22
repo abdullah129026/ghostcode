@@ -194,6 +194,7 @@ def open_pull_request(
         try:
             gh.close()
         except Exception:
-            pass
+            # never fails the PR, but a leak here is worth a debug line
+            log.debug("github client close failed", exc_info=True)
     log.info("pr opened repo=%s branch=%s", owner_repo, branch)
     return url

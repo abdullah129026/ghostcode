@@ -170,3 +170,26 @@ def test_pr_body_lists_files_and_safety_note():
     assert "zero incoming edges" in body
     assert "pytest: 3 passed" in body
     assert "merged automatically" in body
+
+
+def test_open_pull_request_logs_close_failure_but_still_succeeds(
+    monkeypatch, caplog
+):
+    class _LeakyGithub(_FakeGithub):
+        def close(self):
+            raise RuntimeError("connection already gone")
+
+    monkeypatch.setattr(github_pr, "Github", _LeakyGithub)
+    with caplog.at_level("DEBUG", logger="ghostcode.autopr.github"):
+        url = open_pull_request(
+            TOKEN,
+            "o/r",
+            "ghostcode/x",
+            [{"path": "dead.py", "loc": 12, "annual_saving_usd": 4.5,
+              "reasons": ["entire file is unreferenced"]}],
+            "pytest: 3 passed",
+        )
+    assert url == "https://github.com/o/r/pull/7"
+    assert any(
+        "close failed" in rec.message for rec in caplog.records
+    )
