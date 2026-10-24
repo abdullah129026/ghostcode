@@ -71,6 +71,16 @@ def test_store_evicts_oldest_first():
     assert store.get(first.id) is None
 
 
+def test_store_never_evicts_running_job():
+    store = JobStore(max_jobs=2)
+    running = store.create("https://github.com/a/1.git")
+    running.status = "running"
+    settled = store.create("https://github.com/a/2.git")
+    store.create("https://github.com/a/3.git")
+    assert store.get(running.id) is not None
+    assert store.get(settled.id) is None
+
+
 def test_clone_timeout_maps_to_clone_timeout(monkeypatch):
     monkeypatch.setattr(
         "subprocess.run",
