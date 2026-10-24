@@ -1,5 +1,15 @@
 // Money and number formatting: tabular numerals, no invented precision.
 
+export function csvCell(value: string): string {
+  // Spreadsheet formula injection: a cell starting with =, +, -, or @
+  // (even after leading spaces) runs as a formula when the CSV is opened.
+  // Paths come from analyzed repos, so they are attacker-controlled.
+  // Prefixing with a single quote forces plain text; spreadsheets hide it.
+  const needsEscape = /^[ \t]*[=+\-@]/.test(value);
+  const safe = needsEscape ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
 export function usd(n: number): string {
   return "$" + Math.round(n).toLocaleString("en-US");
 }

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { GhostEntry, Report } from "@/lib/api";
-import { int, riskLabel, usd } from "@/lib/format";
+import { csvCell, int, riskLabel, usd } from "@/lib/format";
 
 type SortKey = "path" | "loc" | "annual_saving_usd" | "risk";
 type TypeFilter = "all" | "file" | "symbol";
@@ -29,13 +29,12 @@ function downloadCsv(report: Report) {
       String(g.confidence),
     ]),
   ];
-  const csv = rows
-    .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))
-    .join("\n");
+  const csv = rows.map((r) => r.map(csvCell).join(",")).join("\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${report.repo}-ghostcode.csv`;
+  // repo is "owner/repo": a slash in a download filename is not portable.
+  a.download = `${report.repo.replace("/", "-")}-ghostcode.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
