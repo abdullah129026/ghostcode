@@ -72,6 +72,14 @@ def test_limiter_allows_burst_then_denies():
     assert retry_after > 0
 
 
+def test_limiter_with_zero_rate_denies_without_crashing():
+    limiter = RateLimiter(per_minute=0, burst=1)
+    assert limiter.allow("1.2.3.4")[0] is True
+    allowed, retry_after = limiter.allow("1.2.3.4")
+    assert allowed is False
+    assert retry_after > 0
+
+
 def test_limiter_is_per_key():
     limiter = RateLimiter(per_minute=60, burst=1)
     limiter.allow("1.2.3.4")
