@@ -58,6 +58,13 @@ def test_select_rejects_unknown_and_non_safe_paths():
     assert exc.value.code == "invalid_file_selection"
 
 
+def test_select_rejects_duplicate_paths():
+    ghosts = [_ghost("a.py"), _ghost("b.py")]
+    with pytest.raises(SelectionError) as exc:
+        select_files(_report(ghosts), ["a.py", "a.py"])
+    assert exc.value.code == "duplicate_file_selection"
+
+
 def test_select_rejects_empty_and_missing():
     ghosts = [_ghost("a.py")]
     with pytest.raises(SelectionError) as exc:

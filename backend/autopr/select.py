@@ -62,6 +62,11 @@ def select_files(report: dict, requested: list | None) -> list:
             "too_many_files",
             f"at most {MAX_FILES_PER_PR} files per PR, split it into two",
         )
+    if len(set(requested)) != len(requested):
+        raise SelectionError(
+            "duplicate_file_selection",
+            "each file may appear only once in a selection",
+        )
     unknown = [p for p in requested if p not in by_path]
     if unknown:
         raise SelectionError(
