@@ -7,7 +7,7 @@ contracts to the dashboard.
 """
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field, SecretStr
 
@@ -52,7 +52,7 @@ class PrRequest(BaseModel):
         max_length=500,
         description="GitHub PAT with repo scope; in-memory only, never stored",
     )
-    files: Optional[list[str]] = Field(
+    files: Optional[list[Annotated[str, Field(max_length=1024)]]] = Field(
         default=None,
         max_length=8,
         description="subset of the report's safe-delete files; omit for all",

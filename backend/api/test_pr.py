@@ -116,6 +116,22 @@ def test_pr_accepts_and_worker_fails_closed(monkeypatch):
     assert TOKEN not in status_text
 
 
+def test_pr_rejects_oversized_file_entry():
+    client = _client()
+    job = _done_job(client)
+    resp = client.post(
+        "/pr",
+        json={
+            "job_id": job.id,
+            "github_token": TOKEN,
+            "files": ["x" * 1025],
+        },
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "invalid_request"
+    assert len(client.app.state.pr_jobs._jobs) == 0
+
+
 def test_pr_job_unknown_id_404():
     assert _client().get("/pr-jobs/" + "0" * 32).status_code == 404
 
