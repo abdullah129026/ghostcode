@@ -60,7 +60,19 @@ class PrStore:
         with self._lock:
             self._jobs[job.id] = job
             while len(self._jobs) > self._max_jobs:
-                oldest = min(self._jobs.values(), key=lambda j: j.created_at)
+                # never evict a running job: its poll URL is live and its
+                # PR link is only published through the store. Same rule
+                # as JobStore; if every job is running, the store grows
+                # until one settles (bounded by the sandbox timeout, so
+                # this is temporary).
+                candidates = [
+                    j
+                    for j in self._jobs.values()
+                    if j.status != "running" and j.id != job.id
+                ]
+                if not candidates:
+                    break
+                oldest = min(candidates, key=lambda j: j.created_at)
                 del self._jobs[oldest.id]
         return job
 

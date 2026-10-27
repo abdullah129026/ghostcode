@@ -118,3 +118,23 @@ def test_pr_accepts_and_worker_fails_closed(monkeypatch):
 
 def test_pr_job_unknown_id_404():
     assert _client().get("/pr-jobs/" + "0" * 32).status_code == 404
+
+
+def test_pr_store_never_evicts_running_job():
+    store = pr_jobs.PrStore(max_jobs=2)
+    running = store.create("job-a", "acme/widgets", [])
+    settled = store.create("job-b", "acme/widgets", [])
+    running.status = "running"
+    store.create("job-c", "acme/widgets", [])
+    assert store.get(running.id) is running
+    assert store.get(settled.id) is None
+    assert len(store._jobs) == 2
+
+
+def test_pr_store_grows_when_every_job_running():
+    store = pr_jobs.PrStore(max_jobs=1)
+    first = store.create("job-a", "acme/widgets", [])
+    first.status = "running"
+    store.create("job-b", "acme/widgets", [])
+    assert store.get(first.id) is first
+    assert len(store._jobs) == 2

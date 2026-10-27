@@ -74,7 +74,9 @@ class JobStore:
                 # store grows until one settles (bounded by the clone
                 # timeout and the walk caps, so this is temporary).
                 candidates = [
-                    j for j in self._jobs.values() if j.status != "running"
+                    j
+                    for j in self._jobs.values()
+                    if j.status != "running" and j.id != job.id
                 ]
                 if not candidates:
                     break
