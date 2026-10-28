@@ -28,10 +28,15 @@ import subprocess
 import sys
 import tempfile
 
+from api.security import env_int
+
 log = logging.getLogger("ghostcode.autopr.sandbox")
 
-SANDBOX_TIMEOUT = int(os.environ.get("GHOSTCODE_SANDBOX_TIMEOUT", "600"))
-SANDBOX_MEM_MB = int(os.environ.get("GHOSTCODE_SANDBOX_MEM_MB", "2048"))
+# ponytail: reuse api.security.env_int (stdlib-only, no import cycle):
+# a mistyped operator value used to raise ValueError at import and take
+# the whole API down at boot; now it logs a warning and uses the default.
+SANDBOX_TIMEOUT = env_int("GHOSTCODE_SANDBOX_TIMEOUT", 600)
+SANDBOX_MEM_MB = env_int("GHOSTCODE_SANDBOX_MEM_MB", 2048)
 LOG_TAIL_LINES = 40
 
 _PYTEST_MARKERS = (

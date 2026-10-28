@@ -6,6 +6,7 @@ error instead of hanging the worker on a pathological checkout.
 
 import os
 
+from api.security import env_int
 from .extract import detect_language
 
 SKIP_DIRS = {
@@ -13,8 +14,11 @@ SKIP_DIRS = {
     "dist", "build", ".next", ".pytest_cache", ".mypy_cache",
 }
 
-MAX_FILES = int(os.environ.get("GHOSTCODE_MAX_FILES", "20000"))
-MAX_FILE_BYTES = int(os.environ.get("GHOSTCODE_MAX_FILE_BYTES", "1000000"))
+# ponytail: reuse api.security.env_int (stdlib-only, no import cycle):
+# a mistyped operator value used to raise ValueError at import and take
+# the whole API down at boot; now it logs a warning and uses the default.
+MAX_FILES = env_int("GHOSTCODE_MAX_FILES", 20000)
+MAX_FILE_BYTES = env_int("GHOSTCODE_MAX_FILE_BYTES", 1000000)
 
 
 class WalkError(Exception):

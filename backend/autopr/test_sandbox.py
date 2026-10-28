@@ -69,3 +69,26 @@ def test_run_tests_no_suite(tmp_path):
     with pytest.raises(SandboxError) as exc:
         run_tests(str(tmp_path))
     assert exc.value.code == "no_test_suite"
+
+
+def test_sandbox_env_caps_fall_back_and_read(monkeypatch):
+    """Garbage GHOSTCODE_SANDBOX_* must not crash the import (cf. api
+    env tolerance, commit 3cc9d09, which missed this module). Reloading
+    re-reads the env; the last block restores the pristine defaults so
+    later tests see the same constants a fresh import would."""
+    import importlib
+
+    from autopr import sandbox as sb
+
+    monkeypatch.setenv("GHOSTCODE_SANDBOX_TIMEOUT", "abc")
+    monkeypatch.setenv("GHOSTCODE_SANDBOX_MEM_MB", "")
+    importlib.reload(sb)
+    assert (sb.SANDBOX_TIMEOUT, sb.SANDBOX_MEM_MB) == (600, 2048)
+    monkeypatch.setenv("GHOSTCODE_SANDBOX_TIMEOUT", "30")
+    monkeypatch.setenv("GHOSTCODE_SANDBOX_MEM_MB", "512")
+    importlib.reload(sb)
+    assert (sb.SANDBOX_TIMEOUT, sb.SANDBOX_MEM_MB) == (30, 512)
+    monkeypatch.setenv("GHOSTCODE_SANDBOX_TIMEOUT", "600")
+    monkeypatch.setenv("GHOSTCODE_SANDBOX_MEM_MB", "2048")
+    importlib.reload(sb)
+    assert (sb.SANDBOX_TIMEOUT, sb.SANDBOX_MEM_MB) == (600, 2048)
