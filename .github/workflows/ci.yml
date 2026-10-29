@@ -35,3 +35,8 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      # non-blocking, mirroring the PRISM/Spec2Run frontends: surfaces new
+      # advisories in the log without failing the build
+      - run: npm audit --audit-level=high
+        working-directory: frontend
+        continue-on-error: true
