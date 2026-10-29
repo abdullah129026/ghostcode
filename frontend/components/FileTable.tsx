@@ -132,7 +132,19 @@ export default function FileTable({
             <thead>
               <tr className="border-b border-line text-ink-soft">
                 {headers.map((h) => (
-                  <th key={h.key} className="px-4 py-3 font-medium">
+                  <th
+                    key={h.key}
+                    className="px-4 py-3 font-medium"
+                    // the arrow glyph is aria-hidden, so without this a
+                    // screen reader never learns the current sort state
+                    aria-sort={
+                      sortKey === h.key
+                        ? sortDir === 1
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     <button
                       onClick={() => toggleSort(h.key)}
                       className="hover:text-ink"
