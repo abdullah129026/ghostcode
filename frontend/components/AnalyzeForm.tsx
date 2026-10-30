@@ -13,6 +13,9 @@ export default function AnalyzeForm() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // A disabled submit button does not stop Enter-key resubmission, so
+    // guard here too: one in-flight request means one job, not two.
+    if (busy) return;
     setError(null);
     setBusy(true);
     try {
