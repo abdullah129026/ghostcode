@@ -62,7 +62,10 @@ export function useReport(id: string) {
     if (!job || rerunning) return null;
     setRerunning(true);
     try {
-      const next = await analyzeRepo(job.repo);
+      // job.repo is the "owner/repo" label; /analyze only accepts a
+      // full https://github.com/<owner>/<repo> URL, so re-posting the
+      // label verbatim used to 422 every re-run.
+      const next = await analyzeRepo(`https://github.com/${job.repo}`);
       return next.job_id;
     } catch (err) {
       setError(
