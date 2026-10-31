@@ -14,6 +14,10 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - run: python -m pytest backend/ -q
+      # dependency audit, mirroring the PRISM/Spec2Run backends; verified
+      # clean locally on 2026-10-31, so this fails the build on new advisories
+      - run: pip install pip-audit
+      - run: python -m pip_audit -r backend/requirements.txt
       # Pyflakes gate, mirroring the PRISM/Spec2Run backends. The fixtures
       # under backend/ingest/fixtures are intentionally dead code (the
       # detector's test corpus), so they are excluded from the gate.
