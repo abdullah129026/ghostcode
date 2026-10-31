@@ -3,8 +3,9 @@ import SiteFooter from "@/components/SiteFooter";
 import PrPreview from "@/components/PrPreview";
 import { getSampleReport } from "@/lib/sample";
 
-// Sample PR copy from the design doc (labeled sample). The shipped Day 6
-// version will render this layout from real auto-PR data.
+// Sample PR copy from the design doc (labeled sample). Live reports render
+// this layout from real auto-PR data; the sample keeps a disabled action
+// because it has no repo to open a pull request against.
 export default function SamplePrPage() {
   const report = getSampleReport();
   return (

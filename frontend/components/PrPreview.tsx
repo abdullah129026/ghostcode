@@ -58,10 +58,10 @@ export default function PrPreview({
           <>
             <button
               disabled
-              title="Auto-PR ships on Day 6"
+              title="Sample reports have no repo to open a pull request against"
               className="mt-4 cursor-not-allowed rounded-md bg-moss/40 px-5 py-2.5 text-sm font-medium text-white"
             >
-              Waiting for Day 6 auto-PR
+              Auto-PR runs on live reports
             </button>
             <p className="mt-3 text-sm text-ink-soft">
               Deletions ship as draft PRs. Nothing is merged without your
