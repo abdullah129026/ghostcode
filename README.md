@@ -1,5 +1,7 @@
 # GhostCode
 
+**Live demo: [ghostcode-shah20.vercel.app](https://ghostcode-shah20.vercel.app)**
+
 Turns dead code into a P&L statement. Point it at a GitHub repo and get
 a dependency graph, a dead-code report with real dollar numbers, and
 safe auto-generated PRs that delete the dead files.
