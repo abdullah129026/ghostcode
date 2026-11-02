@@ -20,7 +20,7 @@ export default function FilesPage() {
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-6 py-10">
         {error ? (
-          <div className="py-16 text-center">
+          <div className="py-16 text-center" role="alert">
             <h1 className="text-2xl font-semibold tracking-tight">
               This report did not make it
             </h1>
