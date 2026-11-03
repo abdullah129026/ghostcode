@@ -86,6 +86,21 @@ def test_limiter_is_per_key():
     assert limiter.allow("5.6.7.8")[0] is True
 
 
+def test_limiter_sheds_stalest_keys_past_cap():
+    # The 10k-key shed branch was unpinned: a spray of distinct IPs
+    # must not grow the bucket map without bound. Zero refill keeps the
+    # first key denied until the shed evicts it, which a fresh burst
+    # then proves through the public API alone.
+    limiter = RateLimiter(per_minute=0, burst=1)
+    first = "10.0.0.1"
+    assert limiter.allow(first)[0] is True
+    assert limiter.allow(first)[0] is False
+    for i in range(RateLimiter._MAX_KEYS):
+        assert limiter.allow(f"10.1.{i // 256}.{i % 256}")[0] is True
+    assert limiter.allow("10.2.0.1")[0] is True
+    assert limiter.allow(first)[0] is True
+
+
 def test_limiter_refills_over_time(monkeypatch):
     limiter = RateLimiter(per_minute=60, burst=1)
     now = [1000.0]
