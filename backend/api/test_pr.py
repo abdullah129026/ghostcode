@@ -63,6 +63,22 @@ def test_pr_rejects_unknown_and_unready_jobs():
     assert resp.json()["error"]["code"] == "not_ready"
 
 
+def test_pr_rejects_failed_job_as_report_failed():
+    # The error branch of open_pr was unpinned: a queued job 409s, but a
+    # failed analysis must 422 with report_failed and never reach the
+    # selection step (no report exists to select from).
+    client = _client()
+    store = client.app.state.jobs
+    failed = store.create("https://github.com/acme/widgets.git")
+    failed.status = "error"
+    failed.error = {"code": "clone_failed", "message": "git clone failed"}
+    resp = client.post(
+        "/pr", json={"job_id": failed.id, "github_token": TOKEN}
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "report_failed"
+
+
 def test_pr_rejects_bad_selection_before_spawning():
     client = _client()
     job = _done_job(client)
