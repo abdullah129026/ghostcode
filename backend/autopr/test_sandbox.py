@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 import pytest
 
@@ -63,6 +64,23 @@ def test_run_tests_red(tmp_path, monkeypatch):
     passed, summary, _tail = run_tests(str(tmp_path))
     assert passed is False
     assert "exit code" in summary or "passed" in summary
+
+
+def test_install_deps_failure_fails_the_gate(tmp_path, monkeypatch):
+    # The pip-install branch of _install_deps was the only untested
+    # branch in the gate: a repo whose deps cannot install must fail
+    # the gate, never silently run against missing deps.
+    (tmp_path / "requirements.txt").write_text("no-such-package-xyz\n")
+    monkeypatch.setattr(
+        sandbox,
+        "_run",
+        lambda argv, root, env, timeout: subprocess.CompletedProcess(
+            argv, 1, stdout="", stderr="ERROR: no matching distribution"
+        ),
+    )
+    with pytest.raises(SandboxError) as exc:
+        sandbox._install_deps(str(tmp_path), "pytest", {})
+    assert exc.value.code == "deps_install_failed"
 
 
 def test_run_tests_no_suite(tmp_path):
