@@ -141,6 +141,18 @@ def _tail(proc: subprocess.CompletedProcess) -> str:
     return "\n".join(out.splitlines()[-LOG_TAIL_LINES:])
 
 
+def _install(argv: list, root: str, env: dict, label: str) -> subprocess.CompletedProcess:
+    """One dependency install, with its wall-clock timeout converted to
+    a gate verdict: a hung install is a failed gate, not a crash."""
+    try:
+        return _run(argv, root, env, SANDBOX_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise SandboxError(
+            "deps_install_failed",
+            f"{label} timed out after {SANDBOX_TIMEOUT}s",
+        )
+
+
 def _install_deps(root: str, runner: str, env: dict) -> None:
     """Best-effort dependency install inside the sandbox.
 
@@ -155,11 +167,11 @@ def _install_deps(root: str, runner: str, env: dict) -> None:
             if os.path.exists(os.path.join(root, name))
         ]
         for req in reqs:
-            proc = _run(
+            proc = _install(
                 [sys.executable, "-m", "pip", "install", "-r", req],
                 root,
                 env,
-                SANDBOX_TIMEOUT,
+                f"pip install for {os.path.basename(req)}",
             )
             if proc.returncode != 0:
                 raise SandboxError(
@@ -173,7 +185,7 @@ def _install_deps(root: str, runner: str, env: dict) -> None:
             if os.path.exists(lock)
             else ["npm", "install", "--no-audit", "--no-fund"]
         )
-        proc = _run(argv, root, env, SANDBOX_TIMEOUT)
+        proc = _install(argv, root, env, "npm install")
         if proc.returncode != 0:
             raise SandboxError("deps_install_failed", "npm install failed")
 

@@ -83,6 +83,25 @@ def test_install_deps_failure_fails_the_gate(tmp_path, monkeypatch):
     assert exc.value.code == "deps_install_failed"
 
 
+def test_install_deps_timeout_fails_the_gate(tmp_path, monkeypatch):
+    # A dependency install that hangs past SANDBOX_TIMEOUT used to raise
+    # raw subprocess.TimeoutExpired out of run_tests, so the PR job
+    # landed on the generic "pr_failed" code instead of a precise
+    # deps_install_failed verdict. Both runners share the install path.
+    (tmp_path / "requirements.txt").write_text("requests\n")
+    (tmp_path / "package.json").write_text('{"name": "x"}')
+
+    def _hang(argv, root, env, timeout):
+        raise subprocess.TimeoutExpired(argv, timeout)
+
+    monkeypatch.setattr(sandbox, "_run", _hang)
+    for runner in ("pytest", "npm"):
+        with pytest.raises(SandboxError) as exc:
+            sandbox._install_deps(str(tmp_path), runner, {})
+        assert exc.value.code == "deps_install_failed"
+        assert "timed out" in exc.value.message
+
+
 def test_run_tests_no_suite(tmp_path):
     with pytest.raises(SandboxError) as exc:
         run_tests(str(tmp_path))
