@@ -102,6 +102,43 @@ def test_install_deps_timeout_fails_the_gate(tmp_path, monkeypatch):
         assert "timed out" in exc.value.message
 
 
+def test_install_deps_npm_failure_fails_the_gate(tmp_path, monkeypatch):
+    # Mirror of the pip-install branch: a repo whose npm deps cannot
+    # install must fail the gate, never silently run against missing deps.
+    (tmp_path / "package.json").write_text('{"name": "x"}')
+    monkeypatch.setattr(
+        sandbox,
+        "_run",
+        lambda argv, root, env, timeout: subprocess.CompletedProcess(
+            argv, 1, stdout="", stderr="npm ERR! 404 Not Found"
+        ),
+    )
+    with pytest.raises(SandboxError) as exc:
+        sandbox._install_deps(str(tmp_path), "npm", {})
+    assert exc.value.code == "deps_install_failed"
+
+
+def test_run_tests_npm_green(tmp_path, monkeypatch):
+    # The npm gate had zero coverage: pin the install + test argv path
+    # end to end (npm install, then npm test) without needing a real node.
+    pkg = {"name": "x", "scripts": {"test": "jest"}}
+    with open(tmp_path / "package.json", "w") as f:
+        json.dump(pkg, f)
+    monkeypatch.setattr(sandbox, "detect_runner", lambda root: "npm")
+    monkeypatch.setattr(sandbox, "SANDBOX_TIMEOUT", 120)
+
+    def _fake_run(argv, root, env, timeout):
+        if argv[1] in ("ci", "install"):
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(
+            argv, 0, stdout="3 passed\n", stderr="")
+
+    monkeypatch.setattr(sandbox, "_run", _fake_run)
+    passed, summary, _tail = run_tests(str(tmp_path))
+    assert passed is True
+    assert summary == "npm: 3 passed"
+
+
 def test_run_tests_no_suite(tmp_path):
     with pytest.raises(SandboxError) as exc:
         run_tests(str(tmp_path))
