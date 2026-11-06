@@ -403,13 +403,7 @@ def _js_export_info(node):
                 if is_default or alias == "default":
                     default = text
         elif child.type in ("function_declaration", "generator_function_declaration",
-                            "class_declaration"):
-            name = child.child_by_field_name("name")
-            if name is not None:
-                names.append(_text(name))
-                if is_default:
-                    default = _text(name)
-        elif child.type == "variable_declarator":
+                            "class_declaration", "variable_declarator"):
             name = child.child_by_field_name("name")
             if name is not None:
                 names.append(_text(name))
