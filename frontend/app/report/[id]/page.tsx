@@ -99,7 +99,8 @@ export default function ReportPage() {
           <ReportView
             report={report}
             base={`/report/${id}`}
-            onRerun={rerunning ? undefined : onRerun}
+            onRerun={onRerun}
+            rerunning={rerunning}
           />
         ) : (
           <Progress repo={job?.repo ?? id} />

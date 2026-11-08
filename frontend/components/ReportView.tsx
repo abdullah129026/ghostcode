@@ -17,11 +17,13 @@ export default function ReportView({
   base,
   sample = false,
   onRerun,
+  rerunning = false,
 }: {
   report: Report;
   base: string;
   sample?: boolean;
   onRerun?: () => void;
+  rerunning?: boolean;
 }) {
   const s = report.summary;
   const safeDeletes = report.ghosts.filter((g) => g.risk === "LOW").length;
@@ -51,9 +53,10 @@ export default function ReportView({
         {onRerun && (
           <button
             onClick={onRerun}
-            className="rounded-md bg-moss px-4 py-2 text-sm font-medium text-white hover:bg-moss-deep"
+            disabled={rerunning}
+            className="rounded-md bg-moss px-4 py-2 text-sm font-medium text-white hover:bg-moss-deep disabled:opacity-60"
           >
-            Re-run analysis
+            {rerunning ? "Re-running..." : "Re-run analysis"}
           </button>
         )}
       </div>
