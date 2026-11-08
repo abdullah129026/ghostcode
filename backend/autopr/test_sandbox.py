@@ -39,6 +39,17 @@ def test_detect_runner_none_for_empty_dir(tmp_path):
     assert detect_runner(str(tmp_path)) is None
 
 
+def test_detect_runner_npm_when_binary_present(tmp_path, monkeypatch):
+    pkg = {"name": "x", "scripts": {"test": "jest"}}
+    with open(tmp_path / "package.json", "w") as f:
+        json.dump(pkg, f)
+    # wanted is npm and the binary is on PATH: the npm gate is the answer
+    monkeypatch.setattr(
+        sandbox.shutil, "which", lambda name: "/usr/bin/npm" if name == "npm" else None
+    )
+    assert detect_runner(str(tmp_path)) == "npm"
+
+
 def test_detect_runner_npm_config_only(tmp_path):
     pkg = {"name": "x", "scripts": {"test": "jest"}}
     with open(tmp_path / "package.json", "w") as f:
@@ -143,6 +154,46 @@ def test_run_tests_no_suite(tmp_path):
     with pytest.raises(SandboxError) as exc:
         run_tests(str(tmp_path))
     assert exc.value.code == "no_test_suite"
+
+
+def test_summarize_falls_back_to_exit_code_without_pass_count():
+    # A run whose output has no "N passed" line (collection error, crash
+    # before any test ran) still needs a summary: the exit code, not a
+    # crash in the summarizer.
+    proc = subprocess.CompletedProcess(
+        ["pytest"], 1, stdout="ERROR: collection failed\n", stderr=""
+    )
+    assert sandbox._summarize("pytest", proc) == "pytest: exit code 1"
+
+
+def test_run_tests_runner_unavailable_when_npm_missing(tmp_path, monkeypatch):
+    # A JS repo on a host without node/npm must get the precise
+    # runner_unavailable code, not the generic no_test_suite one: the
+    # suite exists, the binary does not.
+    (tmp_path / "package.json").write_text('{"name": "x"}')
+    monkeypatch.setattr(sandbox.shutil, "which", lambda name: None)
+    with pytest.raises(SandboxError) as exc:
+        run_tests(str(tmp_path))
+    assert exc.value.code == "runner_unavailable"
+
+
+def test_run_tests_timeout_fails_the_gate(tmp_path, monkeypatch):
+    # A test suite that runs past SANDBOX_TIMEOUT must surface as
+    # tests_timeout, the same precise verdict the install path already
+    # has, instead of raw TimeoutExpired escaping run_tests.
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_live.py").write_text(
+        "def test_ok():\n    assert True\n"
+    )
+    monkeypatch.setattr(sandbox, "SANDBOX_TIMEOUT", 120)
+
+    def _hang(argv, root, env, timeout):
+        raise subprocess.TimeoutExpired(argv, timeout)
+
+    monkeypatch.setattr(sandbox, "_run", _hang)
+    with pytest.raises(SandboxError) as exc:
+        run_tests(str(tmp_path))
+    assert exc.value.code == "tests_timeout"
 
 
 def test_sandbox_env_caps_fall_back_and_read(monkeypatch):
