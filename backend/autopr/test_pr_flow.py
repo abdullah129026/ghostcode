@@ -124,3 +124,21 @@ def test_missing_suite_blocks_the_pr(harness, tmp_path):
     assert job.status == "error"
     assert job.error["code"] == "no_test_suite"
     assert "opened" not in calls
+
+
+def test_unexpected_error_settles_as_pr_failed(harness, monkeypatch):
+    src, *_ = harness
+    _repo_with_tests(src)
+
+    def boom_clone(url, token, dest):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(github_pr, "clone_repo", boom_clone)
+    job, calls = _run(harness)
+    assert job.status == "error"
+    assert job.error["code"] == "pr_failed"
+    assert job.error["message"] == "the auto-PR run failed unexpectedly"
+    assert "boom" not in job.error["message"]
+    assert job.pr_url is None
+    assert job.finished_at is not None
+    assert "opened" not in calls
