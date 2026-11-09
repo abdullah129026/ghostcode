@@ -119,3 +119,28 @@ def test_pipeline_walk_error_maps_to_repo_too_large(monkeypatch):
     with pytest.raises(JobFailed) as exc_info:
         jobs._run_pipeline("/tmp/nope", "acme/widgets")
     assert exc_info.value.code == "repo_too_large"
+
+
+def test_pipeline_oserror_maps_to_unreadable_checkout(monkeypatch):
+    monkeypatch.setattr(
+        jobs, "analyze", mock.Mock(side_effect=OSError("disk gone"))
+    )
+    with pytest.raises(JobFailed) as exc_info:
+        jobs._run_pipeline("/tmp/nope", "acme/widgets")
+    assert exc_info.value.code == "unreadable_checkout"
+
+
+def test_pipeline_unexpected_error_settles_as_analysis_failed(monkeypatch):
+    record = {}
+    _fake_clone_from_fixture(monkeypatch, record)
+    monkeypatch.setattr(
+        jobs, "_run_pipeline", mock.Mock(side_effect=RuntimeError("boom"))
+    )
+    store = JobStore()
+    job = store.create("https://github.com/acme/widgets.git")
+    run_job(store, job.id)
+    assert job.status == "error"
+    assert job.error["code"] == "analysis_failed"
+    assert job.error["message"] == "analysis failed unexpectedly"
+    assert "boom" not in job.error["message"]
+    assert job.finished_at is not None
