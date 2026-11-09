@@ -149,3 +149,22 @@ def test_analyze_rate_limit_returns_429(monkeypatch):
     assert resp.status_code == 429
     assert "Retry-After" in resp.headers
     assert resp.json()["error"]["code"] == "rate_limited"
+
+
+def test_unexpected_handler_error_returns_500_without_leak(monkeypatch):
+    from unittest import mock
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(
+        jobs.JobStore, "get", mock.Mock(side_effect=RuntimeError("boom"))
+    )
+    # ServerErrorMiddleware re-raises after sending the 500, so the
+    # default TestClient would raise instead of returning the response.
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    resp = client.get("/jobs/" + "a" * 32)
+    assert resp.status_code == 500
+    assert resp.json() == {
+        "error": {"code": "internal_error", "message": "something went wrong"}
+    }
+    assert "boom" not in resp.text
