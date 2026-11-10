@@ -145,3 +145,35 @@ def test_require_destructured_names():
     assert req["module"] == "./cjs.js"
     assert {"name": "parse", "alias": None} in req["names"]
     assert {"name": "stringify", "alias": "s"} in req["names"]
+
+
+def test_js_export_clause_aliases():
+    # `export { x as default }` is a default export (documented in
+    # _js_export_info); plain re-exports list their local names.
+    src = (b"function render() {}\nfunction other() {}\n"
+           b"export { render as default, other };\n")
+    record = extract_file("v.js", src)
+    assert record["default_export"] == "render"
+    assert "render" in record["exports"]
+    assert "other" in record["exports"]
+    plain = extract_file("w.js", b"function a() {}\nfunction b() {}\n"
+                                  b"export { a, b as c };\n")
+    assert set(plain["exports"]) == {"a", "b"}
+    assert plain["default_export"] is None
+
+
+def test_js_call_args_record_callbacks():
+    # Names in argument position are references: a callback passed to
+    # register() must resolve later, or its def looks dead.
+    src = (b"function handler() {}\nconst ns = {};\n"
+           b"register(handler);\nregister(ns.handler);\n")
+    record = extract_file("a.js", src)
+    calls = [c for c in record["calls"] if c["name"] == "register"]
+    assert [c["args"] for c in calls] == [["handler"], ["ns.handler"]]
+
+
+def test_cjs_export_quoted_pair_keys():
+    # module.exports with a quoted key exposes the unquoted name.
+    src = (b"function parse() {}\nfunction stringify() {}\n"
+           b"module.exports = { parse, \"stringify\": stringify };\n")
+    assert set(extract_file("c.js", src)["exports"]) == {"parse", "stringify"}
