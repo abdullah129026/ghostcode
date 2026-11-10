@@ -573,3 +573,96 @@ def test_annotation_names_keep_symbols_live(tmp_path):
                   for s in report["symbols"]}
     assert ("a.py", "CodeRequest") not in sym_ghosts
     assert ("a.py", "Dead") in sym_ghosts
+
+
+def test_call_edges_arg_named_import_keeps_live(tmp_path):
+    # A callback passed by name must keep its def live: `register(handler)`
+    # where handler is imported from lib.js is a real use.
+    (tmp_path / "lib.js").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("lib.js", language="javascript",
+                defs=[schema.def_record("function", "handler", 1, 2)]),
+        _record("app.js", language="javascript",
+                imports=[schema.import_record(
+                    "./lib", names=[{"name": "handler", "alias": None}],
+                    kind="from")],
+                calls=[schema.call_record("register", None, 3,
+                                          args=["handler"])]),
+    ]
+    edges = call_edges(root, records)
+    assert ("app.js", "lib.js", "function", "handler", "uses") in edges
+
+
+def test_call_edges_arg_default_import_keeps_live(tmp_path):
+    (tmp_path / "view.js").write_text("")
+    root = str(tmp_path)
+    imp = schema.import_record("./view", names=[], kind="from")
+    imp["default"] = "render"
+    records = [
+        _record("view.js", language="javascript",
+                defs=[schema.def_record("function", "render", 1, 2)],
+                default_export="render"),
+        _record("app.js", language="javascript", imports=[imp],
+                calls=[schema.call_record("run", None, 3, args=["render"])]),
+    ]
+    edges = call_edges(root, records)
+    assert ("app.js", "view.js", "function", "render", "uses") in edges
+
+
+def test_call_edges_arg_namespace_attribute_keeps_live(tmp_path):
+    (tmp_path / "lib.js").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("lib.js", language="javascript",
+                defs=[schema.def_record("function", "handler", 1, 2)]),
+        _record("app.js", language="javascript",
+                imports=[schema.import_record("./lib", names=[], alias="ns",
+                                              kind="from")],
+                calls=[schema.call_record("run", None, 3, args=["ns.handler"])]),
+    ]
+    edges = call_edges(root, records)
+    assert ("app.js", "lib.js", "function", "handler", "uses") in edges
+
+
+def test_call_edges_unknown_arg_adds_no_edge():
+    records = [_record(
+        "app.py",
+        calls=[schema.call_record("run", None, 3, args=["nope", "zzz.attr"])])]
+    assert call_edges("/nonexistent", records) == []
+
+
+def test_call_edges_arg_named_import_without_def_adds_no_edge(tmp_path):
+    # An imported name with no def behind it resolves to nothing: the
+    # "uses" edge must not invent a target.
+    (tmp_path / "lib.js").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("lib.js", language="javascript", defs=[]),
+        _record("app.js", language="javascript",
+                imports=[schema.import_record(
+                    "./lib", names=[{"name": "ghost", "alias": None}],
+                    kind="from")],
+                calls=[schema.call_record("run", None, 3, args=["ghost"])]),
+    ]
+    assert call_edges(root, records) == []
+
+
+def test_call_edges_arg_named_module_attribute_keeps_live(tmp_path):
+    # `from pkg import core` then `run(core.handler)`: the dotted arg
+    # resolves through the named import to the submodule's def.
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "core.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("pkg/core.py",
+                defs=[schema.def_record("function", "handler", 1, 2)]),
+        _record("app.py",
+                imports=[schema.import_record(
+                    "pkg", names=[{"name": "core", "alias": None}],
+                    kind="from")],
+                calls=[schema.call_record("run", None, 3, args=["core.handler"])]),
+    ]
+    edges = call_edges(root, records)
+    assert ("app.py", "pkg/core.py", "function", "handler", "uses") in edges
