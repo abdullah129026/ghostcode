@@ -78,7 +78,7 @@ false-positive classes found by running GhostCode on itself) and
   dead code in Python/JS/TS repos and prices it with a heuristic cost
   model; shipped as a FastAPI backend and Next.js dashboard.
 - Cut false-positive ghost flags from 89% to ~1% by dogfooding on real
-  repos; every fix covered by regression tests (169 backend tests).
+  repos; every fix covered by regression tests (193 backend tests).
 - Designed a sandboxed auto-PR flow (subprocess isolation, rlimits,
   dependency install inside the sandbox) that opens deletion PRs only
   on green test runs.
