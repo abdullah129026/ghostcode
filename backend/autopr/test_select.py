@@ -73,3 +73,14 @@ def test_select_rejects_empty_and_missing():
     with pytest.raises(SelectionError) as exc:
         select_files(_report([_ghost("a.py", risk="HIGH")]), None)
     assert exc.value.code == "no_safe_files"
+
+
+def test_select_rejects_too_many_files():
+    """More than MAX_FILES_PER_PR requested files must fail with a clear
+    code, not silently open an oversized PR."""
+    ghosts = [_ghost(f"f{i}.py") for i in range(MAX_FILES_PER_PR + 1)]
+    with pytest.raises(SelectionError) as exc:
+        select_files(
+            _report(ghosts), [f"f{i}.py" for i in range(MAX_FILES_PER_PR + 1)]
+        )
+    assert exc.value.code == "too_many_files"
