@@ -88,3 +88,27 @@ def test_wildcard_import_flags_repo(tmp_path):
     )
     scored = score_ghosts(ghosts, records, sources)
     assert all("wildcard" in " ".join(g["reasons"]) for g in scored)
+
+
+def test_stacked_penalties_drop_symbol_to_high_risk(tmp_path):
+    """All three hiding places at once (string reference, wildcard
+    import, dynamic dispatch) must push a symbol ghost below the 0.60
+    HIGH cutoff: 0.90 - 0.25 - 0.15 - 0.15 = 0.35. This pins the
+    riskiest tier of the product's core output."""
+    records, graph, ghosts, sources = _repo(
+        tmp_path,
+        {
+            "main.py": MAIN + '\nhandler = "gone"\n',
+            "live.py": LIVE + '\nmode = getattr(run, "x", None)\n',
+            "wild.py": "from dead import *\n",
+        },
+    )
+    scored = score_ghosts(ghosts, records, sources)
+    sym = next(g for g in scored if g["ghost_kind"] == "symbol")
+    assert sym["name"] == "gone"
+    assert sym["confidence"] == 0.35
+    assert sym["risk"] == "HIGH"
+    reasons = " ".join(sym["reasons"])
+    assert "string literal" in reasons
+    assert "wildcard" in reasons
+    assert "dynamic dispatch" in reasons
