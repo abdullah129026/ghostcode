@@ -217,3 +217,23 @@ def test_sandbox_env_caps_fall_back_and_read(monkeypatch):
     monkeypatch.setenv("GHOSTCODE_SANDBOX_MEM_MB", "2048")
     importlib.reload(sb)
     assert (sb.SANDBOX_TIMEOUT, sb.SANDBOX_MEM_MB) == (600, 2048)
+
+
+def test_child_limits_apply_rlimits_in_subprocess():
+    """_child_limits is the sandbox's core isolation guarantee, so it
+    must be proven in a real child process, never in-process (it would
+    clamp the test runner itself). The child reports its own RLIMIT_AS
+    soft cap; it must be the configured 2048 MB."""
+    import sys
+
+    code = (
+        "import resource;"
+        "print(resource.getrlimit(resource.RLIMIT_AS)[0])"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True,
+        preexec_fn=sandbox._child_limits(),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert int(proc.stdout.strip()) == sandbox.SANDBOX_MEM_MB * 1024 * 1024
