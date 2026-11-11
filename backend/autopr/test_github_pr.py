@@ -193,3 +193,57 @@ def test_open_pull_request_logs_close_failure_but_still_succeeds(
     assert any(
         "close failed" in rec.message for rec in caplog.records
     )
+
+
+def test_git_nonzero_exit_redacts_token(monkeypatch):
+    """The nonzero-exit path (not just the timeout path) must redact the
+    token: this is the branch that could leak it into an error message."""
+
+    def fake_run(*a, **k):
+        return subprocess.CompletedProcess(
+            a[0] if a else [], 1, stdout="",
+            stderr=f"fatal: authentication failed for {TOKEN}\n",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(GitError) as exc:
+        github_pr._git(["clone", TOKEN], cwd="/tmp", token=TOKEN)
+    assert exc.value.code == "git_failed"
+    assert TOKEN not in exc.value.message
+    assert "[redacted]" in exc.value.message
+
+
+def test_clone_wraps_git_failure(monkeypatch):
+    def boom(*a, **k):
+        raise GitError("git_failed", "clone boom")
+
+    monkeypatch.setattr(github_pr, "_git", boom)
+    with pytest.raises(GitError) as exc:
+        _clone("https://github.com/o/r.git", "/tmp/dest", token=TOKEN)
+    assert exc.value.code == "clone_failed"
+
+
+def test_push_wraps_git_failure(monkeypatch):
+    def boom(*a, **k):
+        raise GitError("git_failed", "push boom")
+
+    monkeypatch.setattr(github_pr, "_git", boom)
+    with pytest.raises(GitError) as exc:
+        push_branch("/tmp", "ghostcode/x", "https://github.com/o/r.git", TOKEN)
+    assert exc.value.code == "push_failed"
+
+
+def test_create_delete_commit_empty_file_list(origin, tmp_path):
+    """Deleting nothing produces no diff, so the commit step must refuse
+    instead of committing an empty change."""
+    dest = str(tmp_path / "clone")
+    _clone(f"file://{origin}", dest)
+    with pytest.raises(GitError) as exc:
+        create_delete_commit(dest, [], "ghostcode/empty")
+    assert exc.value.code == "nothing_to_commit"
+
+
+def test_redact_empty_inputs():
+    assert github_pr.redact("", TOKEN) == ""
+    assert github_pr.redact("plain text", "") == "plain text"
+    assert github_pr.redact("", "") == ""
