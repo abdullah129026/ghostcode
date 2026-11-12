@@ -87,3 +87,38 @@ def test_analyze_debt_shape(tmp_path):
     debt = analyze_debt(records, graph, sources)
     assert set(debt) == {"circular_imports", "duplicates", "huge_files"}
     assert debt["circular_imports"]["cycles"] == [["a.py", "b.py"]]
+
+
+def test_duplicate_bodies_skips_missing_sources_and_non_functions():
+    """Records without source, and defs that are not functions or methods,
+    are skipped; blank lines and comments inside a body are ignored when
+    normalizing, so two copies still group together."""
+    body = (
+        b"def clone():\n"
+        b"    total = 0\n"
+        b"\n"
+        b"    # running total\n"
+        b"    for i in range(10):\n"
+        b"        total += i * 2\n"
+        b"    if total > 5:\n"
+        b"        total -= 1\n"
+        b"    return total\n"
+    )
+    records = [
+        {"path": "gone.py", "defs": [
+            {"kind": "function", "name": "clone", "lineno": 1,
+             "end_lineno": 9}]},
+        {"path": "mixed.py", "defs": [
+            {"kind": "class", "name": "Widget", "lineno": 1,
+             "end_lineno": 9},
+            {"kind": "function", "name": "clone", "lineno": 1,
+             "end_lineno": 9}]},
+        {"path": "other.py", "defs": [
+            {"kind": "function", "name": "clone", "lineno": 1,
+             "end_lineno": 9}]},
+    ]
+    sources = {"mixed.py": body, "other.py": body}
+    groups = duplicate_bodies(records, sources)
+    assert len(groups) == 1
+    assert {(m["path"], m["name"]) for m in groups[0]} == {
+        ("mixed.py", "clone"), ("other.py", "clone")}

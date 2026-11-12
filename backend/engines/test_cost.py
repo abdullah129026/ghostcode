@@ -85,3 +85,18 @@ def test_summarize_end_to_end(tmp_path):
     # Biggest saving first: the dashboard's $ Saved column sorts itself.
     savings = [g["annual_saving_usd"] for g in summary["ghosts"]]
     assert savings == sorted(savings, reverse=True)
+
+
+def test_missing_source_reports_zero_complexity():
+    """Complexity of a file whose source is gone (deleted between ingest
+    and scoring) is 0.0, not a KeyError."""
+    from engines.cost import symbol_complexity
+
+    record = {
+        "path": "gone.py",
+        "language": "python",
+        "defs": [{"kind": "function", "lineno": 1, "end_lineno": 3}],
+    }
+    assert file_mean_complexity(record, {}) == 0.0
+    assert symbol_complexity(
+        {"file": "gone.py", "lineno": 1, "end_lineno": 3}, record, {}) == 0.0
