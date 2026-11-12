@@ -47,6 +47,7 @@ def test_valid_urls_canonicalize(raw, canonical):
         ("https://github.com/acme/widgets?tab=readme", "invalid_repo_url"),
         ("https://github.com/acme/widgets#readme", "invalid_repo_url"),
         ("https://github.com/acme/with space", "invalid_repo_url"),
+        ("https://[::1/acme/widgets", "invalid_repo_url"),
         ("not a url", "invalid_repo_url"),
         ("", "invalid_repo_url"),
         (None, "invalid_repo_url"),
