@@ -170,3 +170,27 @@ def test_pr_store_grows_when_every_job_running():
     store.create("job-b", "acme/widgets", [])
     assert store.get(first.id) is first
     assert len(store._jobs) == 2
+
+
+def test_worker_returns_silently_for_unknown_pr_job():
+    """A worker woken for a pr job that no longer exists (evicted, or a
+    stale thread) just returns: there is nothing to settle."""
+    from api import jobs
+
+    pr_jobs.run_pr_job(
+        pr_jobs.PrStore(), "0" * 32, jobs.JobStore(), "0" * 32, TOKEN, None)
+
+
+def test_worker_fails_closed_when_report_not_ready():
+    """A PR job whose analysis is still queued settles as error with
+    report_not_ready instead of crashing on a missing report."""
+    from api import jobs
+
+    job_store = jobs.JobStore()
+    analysis = job_store.create("https://github.com/acme/widgets.git")
+    pr_store = pr_jobs.PrStore()
+    pr = pr_store.create(analysis.id, "acme/widgets", [{"path": "dead.py"}])
+    pr_jobs.run_pr_job(
+        pr_store, pr.id, job_store, analysis.id, TOKEN, None)
+    assert pr.status == "error"
+    assert pr.error["code"] == "report_not_ready"
