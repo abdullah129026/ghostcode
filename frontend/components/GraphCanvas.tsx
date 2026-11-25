@@ -53,7 +53,7 @@ export default function GraphCanvas({
       </div>
       <div className="absolute bottom-4 left-4 z-10 flex gap-4 rounded-md border border-line bg-white px-4 py-2 text-xs text-ink-soft">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-moss" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-accent" />
           Ghost: 0 incoming edges
         </span>
         <span className="flex items-center gap-1.5">

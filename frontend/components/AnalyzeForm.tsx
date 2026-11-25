@@ -41,12 +41,12 @@ export default function AnalyzeForm() {
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://github.com/your-org/your-repo"
           aria-label="GitHub repository URL"
-          className="w-full rounded-md border border-line bg-white px-4 py-3 font-mono text-sm placeholder:text-ink-soft/60 focus:border-moss focus:outline-none"
+          className="w-full rounded-md border border-line bg-surface px-4 py-3 font-mono text-sm placeholder:text-ink-soft/60 focus:border-accent focus:outline-none"
         />
         <button
           type="submit"
           disabled={busy}
-          className="shrink-0 rounded-md bg-moss px-6 py-3 font-medium text-white hover:bg-moss-deep disabled:opacity-60"
+          className="shrink-0 rounded-md bg-accent px-6 py-3 font-medium text-on-accent hover:bg-accent-deep disabled:opacity-60"
         >
           {busy ? "Starting..." : "Analyze this repo"}
         </button>

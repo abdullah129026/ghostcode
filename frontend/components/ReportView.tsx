@@ -54,7 +54,7 @@ export default function ReportView({
           <button
             onClick={onRerun}
             disabled={rerunning}
-            className="rounded-md bg-moss px-4 py-2 text-sm font-medium text-white hover:bg-moss-deep disabled:opacity-60"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-deep disabled:opacity-60"
           >
             {rerunning ? "Re-running..." : "Re-run analysis"}
           </button>
@@ -104,13 +104,13 @@ export default function ReportView({
               <div className="flex gap-4 text-sm font-medium">
                 <Link
                   href={`${base}/graph`}
-                  className="text-moss-deep underline"
+                  className="text-accent-deep underline"
                 >
                   View in graph
                 </Link>
                 <Link
                   href={`${base}/prs/1`}
-                  className="text-moss-deep underline"
+                  className="text-accent-deep underline"
                 >
                   Preview PR
                 </Link>

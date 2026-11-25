@@ -26,7 +26,7 @@ const TRUST = [
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen text-ink">
       <SiteHeader />
       <main>
         <section id="analyze" className="mx-auto max-w-5xl px-6 pb-20 pt-16">
@@ -48,7 +48,7 @@ export default function Landing() {
 
         <section
           id="how-it-works"
-          className="border-t border-line bg-white"
+          className="border-t border-line bg-surface"
         >
           <div className="mx-auto max-w-5xl px-6 py-16">
             <h2 className="text-2xl font-semibold tracking-tight">
@@ -57,7 +57,7 @@ export default function Landing() {
             <ol className="mt-8 grid gap-10 md:grid-cols-3">
               {STEPS.map((s, i) => (
                 <li key={s.title}>
-                  <p className="font-mono text-sm text-moss">0{i + 1}</p>
+                  <p className="font-mono text-sm text-accent">0{i + 1}</p>
                   <h3 className="mt-2 font-semibold">{s.title}</h3>
                   <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                     {s.body}
@@ -76,7 +76,7 @@ export default function Landing() {
               </div>
               <Link
                 href="/report/sample"
-                className="mt-4 inline-block text-sm font-medium text-moss-deep underline"
+                className="mt-4 inline-block text-sm font-medium text-accent-deep underline"
               >
                 Open the sample report
               </Link>
@@ -97,7 +97,7 @@ export default function Landing() {
               href="https://github.com/abdullah129026/ghostcode"
               target="_blank"
               rel="noreferrer"
-              className="rounded-md border border-line bg-white px-5 py-2.5 text-sm font-medium hover:border-ink"
+              className="rounded-md border border-line bg-surface px-5 py-2.5 text-sm font-medium hover:border-ink"
             >
               Star on GitHub
             </a>
@@ -105,7 +105,7 @@ export default function Landing() {
           <ul className="mt-10 space-y-2 text-sm text-ink-soft">
             {TRUST.map((t) => (
               <li key={t} className="flex gap-2">
-                <span aria-hidden className="text-moss">
+                <span aria-hidden className="text-accent">
                   ✓
                 </span>
                 {t}

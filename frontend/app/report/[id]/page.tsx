@@ -46,14 +46,14 @@ function Progress({ repo }: { repo: string }) {
               aria-hidden
               className={`inline-block h-2 w-2 rounded-full ${
                 i < stage
-                  ? "bg-moss"
+                  ? "bg-accent"
                   : i === stage
-                    ? "animate-pulse bg-moss"
+                    ? "animate-pulse bg-accent"
                     : "bg-line"
               }`}
             />
             {s}
-            {i < stage && <span className="text-moss">done</span>}
+            {i < stage && <span className="text-accent">done</span>}
           </li>
         ))}
       </ol>
@@ -90,7 +90,7 @@ export default function ReportPage() {
             </p>
             <button
               onClick={() => router.push("/")}
-              className="mt-6 rounded-md bg-moss px-5 py-2.5 text-sm font-medium text-white hover:bg-moss-deep"
+              className="mt-6 rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep"
             >
               Analyze another repo
             </button>

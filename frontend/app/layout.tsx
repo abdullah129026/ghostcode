@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import DotField from "@/components/DotField";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrainsMono = JetBrains_Mono({
@@ -27,14 +28,22 @@ export const metadata: Metadata = {
   },
 };
 
+// Runs before hydration so the first paint already has the right theme
+// and there is no light/dark flash. Stored choice wins, else the OS.
+const themeScript = `(function(){try{var t=localStorage.getItem("ghostcode-theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans`}>
+        <DotField />
         {children}
       </body>
     </html>

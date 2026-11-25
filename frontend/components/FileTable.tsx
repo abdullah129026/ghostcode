@@ -115,7 +115,7 @@ export default function FileTable({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by path"
           aria-label="Search by path"
-          className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 text-sm placeholder:text-ink-soft/60 focus:border-moss focus:outline-none"
+          className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 text-sm placeholder:text-ink-soft/60 focus:border-accent focus:outline-none"
         />
       </div>
 
@@ -180,7 +180,7 @@ export default function FileTable({
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`${base}/prs/1`}
-                      className="font-medium text-moss-deep underline"
+                      className="font-medium text-accent-deep underline"
                     >
                       Preview PR
                     </Link>
@@ -194,7 +194,7 @@ export default function FileTable({
 
       <button
         onClick={() => downloadCsv(report)}
-        className="mt-4 text-sm font-medium text-moss-deep underline"
+        className="mt-4 text-sm font-medium text-accent-deep underline"
       >
         Export CSV
       </button>

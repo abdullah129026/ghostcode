@@ -88,7 +88,7 @@ export default function GraphView({
                   <dt className="text-ink-soft">Status</dt>
                   <dd
                     className={
-                      selected.ghost ? "font-medium text-moss-deep" : ""
+                      selected.ghost ? "font-medium text-accent-deep" : ""
                     }
                   >
                     {selected.ghost ? "Ghost" : "Healthy"}
@@ -105,7 +105,7 @@ export default function GraphView({
               </dl>
               <Link
                 href={`${base}/prs/1`}
-                className="mt-6 inline-block rounded-md bg-moss px-4 py-2 text-sm font-medium text-white hover:bg-moss-deep"
+                className="mt-6 inline-block rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-deep"
               >
                 Preview PR
               </Link>

@@ -21,7 +21,7 @@ export default function ReportTabs({
           aria-current={active === t.key ? "page" : undefined}
           className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
             active === t.key
-              ? "border-moss text-ink"
+              ? "border-accent text-ink"
               : "border-transparent text-ink-soft hover:text-ink"
           }`}
         >

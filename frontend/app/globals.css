@@ -2,13 +2,136 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #fdfcfb;
-  color: #1c1917;
-  -webkit-font-smoothing: antialiased;
+/*
+ * GhostCode tokens. Light and dark are token-for-token mirrors (Living
+ * Design Copy, dark mode page). Values are RGB triplets so Tailwind's
+ * opacity modifier keeps working. Never hardcode a hex that has a token.
+ */
+:root {
+  --bg: 250 247 242;
+  --surface: 255 255 255;
+  --surface-2: 241 236 228;
+  --ink: 28 25 23;
+  --ink-soft: 87 83 78;
+  --ink-2: 68 64 60;
+  --muted: 120 113 108;
+  --line: 231 224 214;
+  --line-2: 214 207 195;
+  --accent: 109 40 217;
+  --accent-deep: 91 33 182;
+  --accent-fg: 255 255 255;
+  --accent-tint: 237 233 254;
+  --accent-soft: 245 243 255;
+  --amber: 180 83 9;
+  --red: 185 28 28;
+  --danger-fg: 255 255 255;
+  --blue: 29 78 216;
+  --teal: 14 116 144;
+  /* Dot field: rest dots, response color. */
+  --dot: 216 210 238;
+  --dot-hot: 109 40 217;
 }
 
-::selection {
-  background-color: #059669;
-  color: #ffffff;
+.dark {
+  --bg: 20 18 16;
+  --surface: 30 27 24;
+  --surface-2: 42 37 33;
+  --ink: 245 242 236;
+  --ink-soft: 214 208 198;
+  --ink-2: 214 208 198;
+  --muted: 168 162 154;
+  --line: 46 42 38;
+  --line-2: 69 63 57;
+  --accent: 167 139 250;
+  --accent-deep: 196 181 253;
+  --accent-fg: 28 25 23;
+  --accent-tint: 46 35 80;
+  --accent-soft: 36 29 58;
+  --amber: 245 158 11;
+  --red: 248 113 113;
+  --danger-fg: 28 25 23;
+  --blue: 96 165 250;
+  --teal: 45 212 191;
+  --dot: 58 46 85;
+  --dot-hot: 167 139 250;
+}
+
+@layer base {
+  body {
+    background-color: rgb(var(--bg));
+    color: rgb(var(--ink));
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: rgb(var(--accent));
+    color: rgb(var(--accent-fg));
+  }
+
+  /* Focus is always visible, never removed for looks. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+  }
+
+  /* Styled scrollbars, quiet in both themes. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-2)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-2));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Numbers in tables, metrics, and prices never jitter. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Scroll reveals replay every time: down, up, and on page return. The
+ * observer re-arms on exit, there is no "has animated" flag that survives.
+ * Resting state equals end state, so nothing can get stuck hidden.
+ */
+.reveal {
+  opacity: 1;
+  transform: none;
+}
+.reveal[data-reveal="hidden"] {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.reveal[data-reveal="shown"] {
+  animation: fade-up 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Reduced motion: reveals render instantly, background freezes, charts
+ * draw final state. Information never depends on the animation. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal[data-reveal="hidden"] {
+    opacity: 1;
+    transform: none;
+  }
+  .reveal[data-reveal="shown"] {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

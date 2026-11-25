@@ -24,7 +24,7 @@ export default function SiteHeader() {
           </a>
           <Link
             href="/#analyze"
-            className="rounded-md bg-moss px-4 py-2 font-medium text-white hover:bg-moss-deep"
+            className="rounded-md bg-accent px-4 py-2 font-medium text-on-accent hover:bg-accent-deep"
           >
             Analyze a repo
           </Link>

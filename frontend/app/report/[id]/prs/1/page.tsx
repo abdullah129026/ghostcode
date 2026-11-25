@@ -149,7 +149,7 @@ export default function PrPage() {
             href={phase.prUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-3 inline-block rounded-md bg-moss px-5 py-2.5 text-sm font-medium text-white hover:bg-moss-deep"
+            className="mt-3 inline-block rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep"
           >
             View the pull request
           </a>
@@ -207,7 +207,7 @@ export default function PrPage() {
           <button
             onClick={submit}
             disabled={!canSubmit}
-            className="mt-4 rounded-md bg-moss px-5 py-2.5 text-sm font-medium text-white hover:bg-moss-deep disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-4 rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep disabled:cursor-not-allowed disabled:opacity-40"
           >
             {running ? "Working..." : "Open pull request"}
           </button>
@@ -254,7 +254,7 @@ export default function PrPage() {
             </p>
             <button
               onClick={() => router.push("/")}
-              className="mt-6 rounded-md bg-moss px-5 py-2.5 text-sm font-medium text-white hover:bg-moss-deep"
+              className="mt-6 rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep"
             >
               Analyze another repo
             </button>

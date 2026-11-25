@@ -59,7 +59,7 @@ export default function PrPreview({
             <button
               disabled
               title="Sample reports have no repo to open a pull request against"
-              className="mt-4 cursor-not-allowed rounded-md bg-moss/40 px-5 py-2.5 text-sm font-medium text-white"
+              className="mt-4 cursor-not-allowed rounded-md border border-line-2 bg-surface-2 px-5 py-2.5 text-sm font-medium text-muted"
             >
               Auto-PR runs on live reports
             </button>
