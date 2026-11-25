@@ -666,3 +666,161 @@ def test_call_edges_arg_named_module_attribute_keeps_live(tmp_path):
     ]
     edges = call_edges(root, records)
     assert ("app.py", "pkg/core.py", "function", "handler", "uses") in edges
+
+
+def test_resolve_module_empty_specifier(tmp_path):
+    # An empty specifier resolves to nothing in either language.
+    root = str(tmp_path)
+    assert resolve_module(root, "a.py", "python", "") == []
+    assert resolve_module(root, "a.js", "javascript", "") == []
+
+
+def test_resolve_python_level_two_relative(tmp_path):
+    # `from ..core import x` inside pkg/sub/mod.py climbs two levels:
+    # the base is pkg/, not pkg/sub/.
+    (tmp_path / "pkg" / "sub").mkdir(parents=True)
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "core.py").write_text("")
+    (tmp_path / "pkg" / "sub" / "mod.py").write_text("")
+    root = str(tmp_path)
+    assert resolve_module(root, "pkg/sub/mod.py", "python", "..core") == [
+        "pkg/core.py"]
+    # `from .. import x`: no module after the dots, so the target is the
+    # package itself.
+    assert resolve_module(root, "pkg/sub/mod.py", "python", "..") == [
+        "pkg/__init__.py"]
+
+
+def test_reexport_chain_resolves_through_barrel(tmp_path):
+    # A symbol re-exported through an intermediate module resolves to
+    # its definition, not to the barrel: `from pkg import api` where
+    # pkg/__init__.py does `from .core import api` lands on pkg/core.py.
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("from .core import api\n")
+    (tmp_path / "pkg" / "core.py").write_text("def api():\n    return 1\n")
+    (tmp_path / "app.py").write_text("from pkg import api\n\napi()\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    edges = call_edges(root, records)
+    assert ("app.py", "pkg/core.py", "function", "api", "call") in edges
+    assert ("app.py", "pkg/core.py", "function", "api", "uses") in use_edges(
+        root, records)
+
+
+def test_resolve_name_cycle_returns_no_edge(tmp_path):
+    # A re-export cycle (a re-exports x from b, b re-exports x from a,
+    # neither defines it) resolves to nothing instead of looping.
+    (tmp_path / "a.py").write_text("")
+    (tmp_path / "b.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("a.py", imports=[schema.import_record(
+            "b", names=[{"name": "x", "alias": None}], kind="from")]),
+        _record("b.py", imports=[schema.import_record(
+            "a", names=[{"name": "x", "alias": None}], kind="from")]),
+        _record("app.py", imports=[schema.import_record(
+            "a", names=[{"name": "x", "alias": None}], kind="from")],
+            calls=[schema.call_record("x", None, 3)]),
+    ]
+    assert call_edges(root, records) == []
+
+
+def test_resolve_name_missing_record_returns_no_edge(tmp_path):
+    # The target file exists on disk but was not analyzed, so there is
+    # no record to chase the name through: no edge, no crash.
+    (tmp_path / "a.py").write_text("")
+    (tmp_path / "b.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("a.py", imports=[schema.import_record(
+            "b", names=[{"name": "x", "alias": None}], kind="from")]),
+        _record("app.py", imports=[schema.import_record(
+            "a", names=[{"name": "x", "alias": None}], kind="from")],
+            calls=[schema.call_record("x", None, 3)]),
+    ]
+    assert call_edges(root, records) == []
+
+
+def test_resolve_name_skips_plain_import(tmp_path):
+    # A plain `import b` in the chase is not a re-export: the name is
+    # not carried through it, so the call resolves to nothing.
+    (tmp_path / "a.py").write_text("")
+    (tmp_path / "b.py").write_text("def x():\n    return 1\n")
+    root = str(tmp_path)
+    records = [
+        _record("a.py", imports=[schema.import_record("b", kind="import")]),
+        _record("app.py", imports=[schema.import_record(
+            "a", names=[{"name": "x", "alias": None}], kind="from")],
+            calls=[schema.call_record("x", None, 3)]),
+    ]
+    assert call_edges(root, records) == []
+
+
+def test_resolve_name_skips_unrelated_import_names(tmp_path):
+    # The barrel imports y from b, but the chase is for x: an import
+    # that does not carry the chased name is skipped.
+    (tmp_path / "a.py").write_text("")
+    (tmp_path / "b.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("a.py", imports=[schema.import_record(
+            "b", names=[{"name": "y", "alias": None}], kind="from")]),
+        _record("app.py", imports=[schema.import_record(
+            "a", names=[{"name": "x", "alias": None}], kind="from")],
+            calls=[schema.call_record("x", None, 3)]),
+    ]
+    assert call_edges(root, records) == []
+
+
+def test_resolve_default_missing_record_returns_no_edge(tmp_path):
+    # The default-import target exists on disk but was not analyzed:
+    # there is no record to read a default export from.
+    (tmp_path / "view.js").write_text("")
+    root = str(tmp_path)
+    imp = schema.import_record("./view.js", kind="from")
+    imp["default"] = "render"
+    records = [_record("app.js", language="javascript", imports=[imp])]
+    assert use_edges(root, records) == []
+
+
+def test_default_import_without_default_export_adds_no_edge(tmp_path):
+    # A default import of a module with no default export resolves to
+    # nothing: the named def behind it is not the default, so neither
+    # a call nor a use edge is invented for it.
+    (tmp_path / "view.js").write_text("")
+    root = str(tmp_path)
+    imp = schema.import_record("./view.js", kind="from")
+    imp["default"] = "render"
+    records = [
+        _record("view.js", language="javascript",
+                defs=[schema.def_record("function", "render", 1, 2)]),
+        _record("app.js", language="javascript", imports=[imp]),
+    ]
+    assert use_edges(root, records) == []
+    calling = [
+        records[0],
+        _record("app.js", language="javascript", imports=[imp],
+                calls=[schema.call_record("render", None, 3)]),
+    ]
+    assert call_edges(root, calling) == []
+
+
+def test_import_bindings_skips_empty_name(tmp_path):
+    # An import entry with an empty name binds nothing: it is skipped
+    # instead of creating a binding for "".
+    (tmp_path / "lib.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("app.py",
+                imports=[schema.import_record(
+                    "lib", names=[{"name": "", "alias": None}], kind="from")],
+                calls=[schema.call_record("run", None, 3)]),
+    ]
+    assert call_edges(root, records) == []
+
+
+def test_call_edges_skips_empty_call_name():
+    # A call record with no name (the extractor's fallback for a call
+    # node without a function) resolves to nothing.
+    records = [_record("app.py", calls=[schema.call_record("", None, 1)])]
+    assert call_edges("/nonexistent", records) == []

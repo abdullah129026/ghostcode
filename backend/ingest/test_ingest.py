@@ -6,6 +6,8 @@ built on lies, so keep the fixtures small and the assertions exact.
 
 from ingest.extract import extract_file
 
+import pytest
+
 
 PY_FIXTURE = b'''\
 import os
@@ -177,3 +179,91 @@ def test_cjs_export_quoted_pair_keys():
     src = (b"function parse() {}\nfunction stringify() {}\n"
            b"module.exports = { parse, \"stringify\": stringify };\n")
     assert set(extract_file("c.js", src)["exports"]) == {"parse", "stringify"}
+
+
+def test_unsupported_file_type_raises():
+    with pytest.raises(ValueError, match="unsupported file type"):
+        extract_file("notes.txt", b"hi")
+    with pytest.raises(ValueError, match="unsupported file type"):
+        extract_file("Makefile", b"all:\n\techo hi\n")
+
+
+def test_python_return_dotted_name():
+    # `return helper.attr`: the returned name is a use of attr on helper,
+    # so the receiver/name split runs on the dotted reference.
+    record = extract_file("a.py", b"def build():\n    return helper.attr\n")
+    assert any(c["name"] == "attr" and c["receiver"] == "helper"
+               for c in record["calls"])
+
+
+def test_python_call_arg_attribute():
+    # An attribute in argument position is recorded dotted, not split:
+    # `register(ns.handler)` keeps the receiver with the name.
+    record = extract_file("a.py", b"register(ns.handler)\n")
+    calls = [c for c in record["calls"] if c["name"] == "register"]
+    assert [c["args"] for c in calls] == [["ns.handler"]]
+
+
+def test_js_function_inside_class_method_is_method():
+    # A function declared inside a method still sits under the class, so
+    # it is recorded as a method of that class, not a top-level function.
+    src = (b"class Widget {\n  render() {\n    function helper() {}\n"
+           b"    helper();\n  }\n}\n")
+    defs = _defs(extract_file("a.js", src))
+    assert ("method", "helper") in defs
+    assert defs[("method", "helper")]["parent"] == "Widget"
+    assert ("function", "helper") not in defs
+
+
+def test_js_dynamic_import_non_literal_specifier():
+    # import(spec): a computed specifier is invisible, not an edge and
+    # not a call; only literal dynamic imports are recorded.
+    record = extract_file("a.js", b"import(spec);\n")
+    assert record["imports"] == []
+    assert record["calls"] == []
+
+
+def test_js_require_non_literal_specifier():
+    # require(spec): same ceiling as dynamic import, no literal no edge.
+    record = extract_file("a.js", b"require(spec);\n")
+    assert record["imports"] == []
+    assert record["calls"] == []
+
+
+def test_jsx_call_expression_not_double_counted():
+    # `{foo()}` inside JSX: the call is recorded once, from the
+    # call_expression node itself. The JSX-expression walk skips it so
+    # it is not recorded a second time as a bare reference.
+    src = (b"export default function Page() {\n"
+           b"  return <div>{foo()}</div>;\n}\nfunction foo() {}\n")
+    calls = extract_file("a.tsx", src)["calls"]
+    assert [c["name"] for c in calls].count("foo") == 1
+
+
+def test_jsx_member_expression_ref():
+    # `{ns.handler}` inside JSX: the reference is the base object, so
+    # the member expression contributes `ns`, not `handler`.
+    src = (b"export default function Page() {\n"
+           b"  return <div>{ns.handler}</div>;\n}\n")
+    calls = extract_file("a.tsx", src)["calls"]
+    assert any(c["name"] == "ns" and c["receiver"] is None for c in calls)
+
+
+def test_bare_require_binds_no_names():
+    # A require() that is not assigned to a variable binds no names:
+    # the module edge exists, but there is nothing to resolve through it.
+    record = extract_file("a.js", b'require("./m");\n')
+    req = next(i for i in record["imports"] if i["kind"] == "require")
+    assert req["module"] == "./m"
+    assert req["names"] == []
+
+
+def test_plain_assignment_exposes_nothing():
+    # `x = 1` is not a member assignment, so it exposes no export names.
+    assert extract_file("a.js", b"x = 1;\n")["exports"] == []
+
+
+def test_unrelated_member_assignment_exposes_nothing():
+    # `obj.prop = 1` is a member assignment but not a module.exports or
+    # exports.* shape, so it exposes nothing.
+    assert extract_file("a.js", b"obj.prop = 1;\n")["exports"] == []
