@@ -267,3 +267,30 @@ def test_unrelated_member_assignment_exposes_nothing():
     # `obj.prop = 1` is a member assignment but not a module.exports or
     # exports.* shape, so it exposes nothing.
     assert extract_file("a.js", b"obj.prop = 1;\n")["exports"] == []
+
+
+def test_python_receiver_type_annotations():
+    # `store: Store` on a parameter and on an assignment both record the
+    # receiver's type: the resolver needs it to chase store.create().
+    record = extract_file("a.py", b"from store import Store\n\n"
+                                   b"def make(store: Store):\n"
+                                   b"    return store.create()\n\n"
+                                   b"store: Store = Store()\n"
+                                   b"store.create()\n")
+    assert record["receiver_types"] == {"store": ["Store"]}
+
+
+def test_js_receiver_type_annotations():
+    # Same shape in TypeScript: a typed const and a typed parameter.
+    record = extract_file("a.ts", b'import { Store } from "./store";\n\n'
+                                   b"function make(store: Store) {\n"
+                                   b"  return store.create();\n}\n\n"
+                                   b"const store: Store = new Store();\n"
+                                   b"store.create();\n")
+    assert record["receiver_types"] == {"store": ["Store"]}
+
+
+def test_unannotated_assignment_records_no_receiver_type():
+    # A plain assignment carries no type, so nothing is recorded for it.
+    record = extract_file("a.py", b"store = Store()\nstore.create()\n")
+    assert record["receiver_types"] == {}

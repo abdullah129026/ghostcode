@@ -79,8 +79,11 @@ savings.
 Documented, not hidden:
 
 - Methods called on receivers the analyzer can't track
-  (`store.create()` where `store` is annotated, `app.state.x.allow()`).
-  Fixing this needs type tracking.
+  (`app.state.x.allow()`): chained attribute receivers still need
+  assignment tracking (v2 item 1, next slice). Plain annotated
+  receivers (`store.create()` where `store` is annotated as Store)
+  resolve since v2 item 1 slice 1, for Python and TypeScript, whether
+  the class is defined in the same file or imported by name.
 - React lifecycle methods (`render`, `getDerivedStateFromError`) and
   framework config methods (`rewrites()` in `next.config.js`).
 - Test fixtures with their own import roots nested inside the repo.

@@ -92,16 +92,18 @@ def extract_file(path, source):
         raise ValueError(f"unsupported file type: {path}")
     tree = _PARSERS[language].parse(source)
     if language == "python":
-        imports, defs, exports, calls = _extract_python(tree.root_node)
+        imports, defs, exports, calls, receiver_types = _extract_python(tree.root_node)
         has_main_guard = _py_main_guard(tree.root_node)
         default_export = None
     else:
-        imports, defs, exports, calls, default_export = _extract_js(tree.root_node)
+        imports, defs, exports, calls, default_export, receiver_types = (
+            _extract_js(tree.root_node))
         has_main_guard = False
     loc = source.count(b"\n") + (0 if source.endswith(b"\n") else 1)
     return schema.file_record(path, language, loc, imports, defs, exports, calls,
                               has_main_guard=has_main_guard,
-                              default_export=default_export)
+                              default_export=default_export,
+                              receiver_types=receiver_types)
 
 
 # ---------------------------------------------------------------------------
@@ -111,8 +113,32 @@ def extract_file(path, source):
 _FROM_RE = re.compile(r"from\s+([\w.]+)\s+import\s+(.+)")
 
 
+def _type_text(node):
+    """Text of a type annotation node, without a leading colon.
+
+    Python `type` nodes carry the annotation bare ("Store"); TS
+    `type_annotation` nodes include the colon (": Store").
+    """
+    text = _text(node)
+    return text[1:].strip() if text.startswith(":") else text
+
+
+def _record_receiver_type(receiver_types, name, type_node):
+    """Add one variable -> type annotation, keeping both types when a
+    name is annotated twice (different functions, same name)."""
+    if name is None or type_node is None or name.type != "identifier":
+        return
+    text = _type_text(type_node)
+    if not text:
+        return
+    seen = receiver_types.setdefault(_text(name), [])
+    if text not in seen:
+        seen.append(text)
+
+
 def _extract_python(root):
     imports, defs, exports, calls = [], [], [], []
+    receiver_types = {}
     for node, ancestors in _iter_nodes(root):
         if node.type == "import_statement":
             imports.extend(_py_plain_imports(node))
@@ -133,6 +159,18 @@ def _extract_python(root):
                                    _end_lineno(node), parent,
                                    decorated=decorated)
             )
+        elif node.type == "assignment":
+            # `store: Store = Store()`: the annotated receiver's type,
+            # so the resolver can chase store.create() to Store.create.
+            _record_receiver_type(receiver_types,
+                                  node.child_by_field_name("left"),
+                                  node.child_by_field_name("type"))
+        elif node.type == "typed_parameter":
+            # `def make(store: Store)`: the parameter's annotation.
+            # The name is the first child; the type is the `type` field.
+            name = node.children[0] if node.children else None
+            _record_receiver_type(receiver_types, name,
+                                  node.child_by_field_name("type"))
         elif node.type == "call":
             dynamic = _py_dynamic_import(node)
             if dynamic is not None:
@@ -157,7 +195,7 @@ def _extract_python(root):
                 if child.type == "identifier":
                     calls.append(schema.call_record(_text(child), None,
                                                     _lineno(child)))
-    return imports, defs, exports, calls
+    return imports, defs, exports, calls, receiver_types
 
 
 def _py_main_guard(root):
@@ -283,6 +321,7 @@ def _py_dynamic_import(node):
 def _extract_js(root):
     imports, defs, exports, calls = [], [], [], []
     default_export = None
+    receiver_types = {}
     for node, ancestors in _iter_nodes(root):
         if node.type == "import_statement":
             imports.append(_js_import(node))
@@ -307,6 +346,15 @@ def _extract_js(root):
             record = _js_var_function(node)
             if record is not None:
                 defs.append(record)
+            # `const store: Store = new Store()`: the annotated receiver.
+            _record_receiver_type(receiver_types,
+                                  node.child_by_field_name("name"),
+                                  node.child_by_field_name("type"))
+        elif node.type in ("required_parameter", "optional_parameter"):
+            # `function make(store: Store)`: the parameter's annotation.
+            _record_receiver_type(receiver_types,
+                                  node.child_by_field_name("pattern"),
+                                  node.child_by_field_name("type"))
         elif node.type == "export_statement":
             names, default = _js_export_info(node)
             exports.extend(names)
@@ -336,7 +384,7 @@ def _extract_js(root):
                 calls.append(schema.call_record(ref, None, _lineno(node)))
         elif node.type == "assignment_expression":
             exports.extend(_js_cjs_export(node))
-    return imports, defs, exports, calls, default_export
+    return imports, defs, exports, calls, default_export, receiver_types
 
 
 def _js_import(node):

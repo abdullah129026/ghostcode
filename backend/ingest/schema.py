@@ -4,11 +4,11 @@ The schema version is bumped whenever a field is added, renamed, or
 removed, so old reports and the dashboard can keep reading what they know.
 """
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def file_record(path, language, loc, imports, defs, exports, calls,
-               has_main_guard=False, default_export=None):
+               has_main_guard=False, default_export=None, receiver_types=None):
     return {
         "path": path,
         "language": language,
@@ -22,6 +22,12 @@ def file_record(path, language, loc, imports, defs, exports, calls,
         "has_main_guard": has_main_guard,
         # Name of the default-exported symbol for JS/TS modules (else None).
         "default_export": default_export,
+        # Receiver type annotations, added in schema 4 (GhostCode v2 item
+        # 1): variable name -> [type texts], e.g. {"store": ["Store"]}.
+        # The resolver chases `store.create()` to the class the variable
+        # is annotated as. A variable annotated twice keeps both types;
+        # when resolution is ambiguous the node stays live.
+        "receiver_types": {k: list(v) for k, v in (receiver_types or {}).items()},
     }
 
 

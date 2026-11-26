@@ -10,6 +10,7 @@ trust in the whole report.
 """
 
 import os
+import re
 
 _JS_EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 
@@ -364,6 +365,10 @@ def _resolve_call(root, by_path, record, named, default, namespace,
         # flagged as dead kills trust.
         return [(record["path"], "method", name)]
     base = receiver.split(".")[0]
+    hits = _resolve_annotated_receiver(root, by_path, record, named,
+                                       namespace, base, name, source_roots)
+    if hits:
+        return hits
     if base in namespace:
         hit = _resolve_name(root, by_path, namespace[base], name, set(),
                             source_roots)
@@ -375,6 +380,90 @@ def _resolve_call(root, by_path, record, named, default, namespace,
                             source_roots)
         return [hit] if hit else []
     return []
+
+
+_TYPE_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_QUALIFIED_TYPE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _method_in_class(by_path, path, class_name, method_name):
+    """(path, "method", method_name) when the class in that file defines
+    the method, else None."""
+    target = by_path.get(path)
+    if target is None:
+        return None
+    for d in target["defs"]:
+        if (d["kind"] == "method" and d["name"] == method_name
+                and d.get("parent") == class_name):
+            return (path, "method", method_name)
+    return None
+
+
+def _resolve_annotated_receiver(root, by_path, record, named, namespace,
+                                base, name, source_roots):
+    """Method hits for a call on an annotated receiver: `store.create()`
+    where `store` is annotated as Store.
+
+    Tries each recorded type for the receiver base. Only a class that
+    actually defines the called method yields a hit; an unresolvable
+    type or a missing method falls through to the caller's remaining
+    checks, so nothing is invented.
+    """
+    hits = []
+    for type_text in record.get("receiver_types", {}).get(base, ()):
+        for hit in _resolve_type_to_method(root, by_path, record, named,
+                                           namespace, type_text, name,
+                                           source_roots):
+            if hit not in hits:
+                hits.append(hit)
+    return hits
+
+
+def _resolve_type_to_method(root, by_path, record, named, namespace,
+                            type_text, name, source_roots):
+    """Method hits for one annotation text, or [] when it names no class
+    with the called method."""
+    match = _QUALIFIED_TYPE.fullmatch(type_text.strip())
+    if match:
+        # `store.Store`: the module is bound by import, the class lives
+        # in that module's file.
+        head, _, tail = type_text.strip().partition(".")
+        target = None
+        if head in namespace:
+            target = namespace[head]
+        elif head in named:
+            target = named[head][0]
+        if target is not None:
+            hit = _method_in_class(by_path, target, tail, name)
+            return [hit] if hit is not None else []
+    # Plain identifiers, in order: Optional[Store] tries Optional, then
+    # Store; the first that names a class with the method wins.
+    for ident in _TYPE_IDENT.findall(type_text):
+        hit = _class_method_hit(root, by_path, record, named, ident, name,
+                                source_roots)
+        if hit is not None:
+            return [hit]
+    return []
+
+
+def _class_method_hit(root, by_path, record, named, class_name, name,
+                      source_roots):
+    """(path, "method", name) for a method of the named class, or None.
+
+    The class may be defined in the calling file or imported by name
+    (`from store import Store`); a re-exported class is chased through
+    _resolve_name like any other imported symbol.
+    """
+    hit = _method_in_class(by_path, record["path"], class_name, name)
+    if hit is not None:
+        return hit
+    if class_name in named:
+        target, exported = named[class_name]
+        resolved = _resolve_name(root, by_path, target, exported, set(),
+                                 source_roots)
+        if resolved is not None:
+            return _method_in_class(by_path, resolved[0], class_name, name)
+    return None
 
 
 def use_edges(root, records):

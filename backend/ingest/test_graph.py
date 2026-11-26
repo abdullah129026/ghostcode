@@ -85,10 +85,11 @@ def test_import_edges_include_parent_packages(tmp_path):
 
 
 def _record(path, language="python", defs=(), imports=(), calls=(),
-            has_main_guard=False, default_export=None):
+            has_main_guard=False, default_export=None, receiver_types=None):
     return schema.file_record(path, language, 10, list(imports), list(defs),
                               [], list(calls), has_main_guard=has_main_guard,
-                              default_export=default_export)
+                              default_export=default_export,
+                              receiver_types=receiver_types)
 
 
 def test_call_edges_same_file():
@@ -824,3 +825,111 @@ def test_call_edges_skips_empty_call_name():
     # node without a function) resolves to nothing.
     records = [_record("app.py", calls=[schema.call_record("", None, 1)])]
     assert call_edges("/nonexistent", records) == []
+
+
+def test_annotated_receiver_keeps_imported_method_live(tmp_path):
+    """`store: Store` then `store.create()`: the annotated receiver
+    resolves create() to Store.create in store.py, not a ghost."""
+    (tmp_path / "store.py").write_text(
+        "class Store:\n"
+        "    def create(self):\n"
+        "        return 1\n"
+        "    def delete(self):\n"
+        "        return 0\n")
+    (tmp_path / "app.py").write_text(
+        "from store import Store\n"
+        "\n"
+        "def make(store: Store):\n"
+        "    return store.create()\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("store.py", "create") not in sym_ghosts
+    assert ("store.py", "delete") in sym_ghosts
+
+
+def test_unannotated_receiver_leaves_imported_method_ghost(tmp_path):
+    # Control for the test above: without the annotation, the same call
+    # cannot be chased to Store, so create() stays a ghost.
+    (tmp_path / "store.py").write_text(
+        "class Store:\n"
+        "    def create(self):\n"
+        "        return 1\n")
+    (tmp_path / "app.py").write_text(
+        "from store import Store\n"
+        "\n"
+        "def make(store):\n"
+        "    return store.create()\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("store.py", "create") in sym_ghosts
+
+
+def test_annotated_receiver_unknown_method_stays_ghost(tmp_path):
+    # The annotation only resolves methods the class actually has:
+    # store.purge() on a Store with no purge() is still a ghost.
+    (tmp_path / "store.py").write_text(
+        "class Store:\n"
+        "    def create(self):\n"
+        "        return 1\n")
+    (tmp_path / "app.py").write_text(
+        "from store import Store\n"
+        "\n"
+        "def make(store: Store):\n"
+        "    return store.purge()\n")
+    root = str(tmp_path)
+    records = analyze(root)
+    graph = build_graph(records)
+    add_resolved_edges(graph, records, root)
+    report = detect_ghosts(records, graph)
+    sym_ghosts = {(_norm_path(s["path"]), s["name"])
+                  for s in report["symbols"]}
+    assert ("store.py", "create") in sym_ghosts
+
+
+def test_call_edges_annotated_receiver_cross_file(tmp_path):
+    # The resolver half of the e2e test above, pinned without the
+    # extractor: `store: Store` with Store imported from store.py
+    # resolves store.create() to the method in store.py.
+    (tmp_path / "store.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("store.py",
+                defs=[schema.def_record("class", "Store", 1, 5),
+                      schema.def_record("method", "create", 2, 3,
+                                        parent="Store")]),
+        _record("app.py",
+                imports=[schema.import_record(
+                    "store", names=[{"name": "Store", "alias": None}],
+                    kind="from")],
+                calls=[schema.call_record("create", "store", 5)],
+                receiver_types={"store": ["Store"]}),
+    ]
+    edges = call_edges(root, records)
+    assert ("app.py", "store.py", "method", "create", "call") in edges
+
+
+def test_call_edges_annotated_receiver_unresolvable_type(tmp_path):
+    # The annotation names a type that is neither defined nor imported:
+    # no edge is invented, and nothing crashes.
+    (tmp_path / "store.py").write_text("")
+    root = str(tmp_path)
+    records = [
+        _record("store.py",
+                defs=[schema.def_record("class", "Store", 1, 5),
+                      schema.def_record("method", "create", 2, 3,
+                                        parent="Store")]),
+        _record("app.py",
+                calls=[schema.call_record("create", "store", 5)],
+                receiver_types={"store": ["Missing"]}),
+    ]
+    assert call_edges(root, records) == []
