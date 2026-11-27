@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import PrPreview from "@/components/PrPreview";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { useReport } from "@/hooks/useReport";
 import { API_BASE } from "@/lib/api";
 import { int, usd } from "@/lib/format";
@@ -150,7 +152,7 @@ export default function PrPage() {
             href={phase.prUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-3 inline-block rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep"
+            className={cn(buttonVariants(), "mt-3")}
           >
             View the pull request
           </a>
@@ -171,7 +173,7 @@ export default function PrPage() {
                   checked={(selected ?? []).includes(f.path)}
                   onChange={() => toggle(f.path)}
                   disabled={running}
-                  className="h-4 w-4 accent-[#059669]"
+                  className="h-4 w-4 accent-accent"
                 />
                 <span className="font-mono">{f.path}</span>
                 <span className="ml-auto font-mono text-xs tabular-nums text-ink-soft">
@@ -188,7 +190,7 @@ export default function PrPage() {
             >
               GitHub token
             </label>
-            <input
+            <Input
               id="gh-token"
               type="password"
               value={token}
@@ -196,7 +198,7 @@ export default function PrPage() {
               placeholder="ghp_..."
               autoComplete="off"
               disabled={running}
-              className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm focus:border-ink-soft focus:outline-none"
+              className="font-mono"
             />
             <p className="mt-2 text-xs text-ink-soft">
               A personal access token with repo scope, for this repo only.
@@ -205,13 +207,14 @@ export default function PrPage() {
             </p>
           </div>
 
-          <button
+          <Button
             onClick={submit}
             disabled={!canSubmit}
-            className="mt-4 rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep disabled:cursor-not-allowed disabled:opacity-40"
+            loading={running}
+            className="mt-4"
           >
             {running ? "Working..." : "Open pull request"}
-          </button>
+          </Button>
 
           {running && (
             <p className="mt-3 text-sm text-ink-soft">

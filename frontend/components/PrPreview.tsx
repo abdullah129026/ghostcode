@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { SampleTag } from "@/components/ReportView";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { int, usd } from "@/lib/format";
 
 export interface PrFile {
@@ -38,7 +40,7 @@ export default function PrPreview({
         {files.map((f) => (
           <details
             key={f.path}
-            className="rounded-lg border border-line bg-white px-4 py-3"
+            className="rounded-lg border border-line bg-surface px-4 py-3 transition-colors hover:border-line-2"
           >
             <summary className="cursor-pointer list-none font-mono text-sm">
               <span className="text-clay">-{int(f.loc)}</span>{" "}
@@ -52,17 +54,18 @@ export default function PrPreview({
         ))}
       </div>
 
-      <div className="mt-8 rounded-lg border border-line bg-white p-6">
+      <div className="mt-8 rounded-lg border border-line bg-surface p-6">
         <p className="text-sm">{sandboxLine}</p>
         {action ?? (
           <>
-            <button
+            <Button
+              variant="secondary"
               disabled
               title="Sample reports have no repo to open a pull request against"
-              className="mt-4 cursor-not-allowed rounded-md border border-line-2 bg-surface-2 px-5 py-2.5 text-sm font-medium text-muted"
+              className="mt-4"
             >
               Auto-PR runs on live reports
-            </button>
+            </Button>
             <p className="mt-3 text-sm text-ink-soft">
               Deletions ship as draft PRs. Nothing is merged without your
               review.
@@ -72,7 +75,10 @@ export default function PrPreview({
       </div>
 
       <p className="mt-8 text-sm text-ink-soft">
-        <Link href={backHref} className="underline hover:text-ink">
+        <Link
+          href={backHref}
+          className={cn(buttonVariants({ variant: "link" }), "px-0")}
+        >
           Back to the report
         </Link>
       </p>

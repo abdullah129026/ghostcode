@@ -5,13 +5,15 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import ReportTabs from "@/components/ReportTabs";
 import { SampleTag } from "@/components/ReportView";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { int, riskLabel } from "@/lib/format";
 import type { GraphNode, Report } from "@/lib/api";
 
 const GraphCanvas = dynamic(() => import("@/components/GraphCanvas"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[620px] items-center justify-center border border-line bg-white text-sm text-ink-soft">
+    <div className="flex h-[620px] items-center justify-center border border-line bg-surface text-sm text-ink-soft">
       Loading the graph canvas...
     </div>
   ),
@@ -55,12 +57,12 @@ export default function GraphView({
           type="checkbox"
           checked={ghostOnly}
           onChange={(e) => setGhostOnly(e.target.checked)}
-          className="h-4 w-4 accent-[#059669]"
+          className="h-4 w-4 accent-accent"
         />
         Highlight ghost nodes only
       </label>
       <div className="mt-4 flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-line bg-white">
+        <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-line bg-surface">
           <GraphCanvas
             graph={report.graph}
             ghostOnly={ghostOnly}
@@ -69,7 +71,7 @@ export default function GraphView({
         </div>
         <aside className="w-full shrink-0 lg:w-80">
           {selected ? (
-            <div className="rounded-lg border border-line bg-white p-6">
+            <div className="rounded-lg border border-line bg-surface p-6">
               <p className="break-all font-mono text-sm font-medium">
                 {selected.path}
               </p>
@@ -105,14 +107,14 @@ export default function GraphView({
               </dl>
               <Link
                 href={`${base}/prs/1`}
-                className="mt-6 inline-block rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-deep"
+                className={cn(buttonVariants(), "mt-6")}
               >
                 Preview PR
               </Link>
             </div>
           ) : (
-            <div className="rounded-lg border border-line bg-white p-6 text-sm text-ink-soft">
-              Click a node to inspect it. Ghost nodes are emerald: zero
+            <div className="rounded-lg border border-line bg-surface p-6 text-sm text-ink-soft">
+              Click a node to inspect it. Ghost nodes are violet: zero
               incoming edges in the dependency graph.
             </div>
           )}
