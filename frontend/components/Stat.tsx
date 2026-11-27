@@ -1,21 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { int } from "@/lib/format";
+import { int, usd } from "@/lib/format";
 
 // Animated data: numeric stats count up to their final value on mount
 // (700ms ease-out). String values render as-is. Reduced motion renders
 // the final value immediately; the number never depends on the animation.
+// format is a key, not a function, so server components can pass it.
+const FORMATS = { int, usd } as const;
+
 export default function Stat({
   label,
   value,
   mono = true,
-  format,
+  format = "int",
 }: {
   label: string;
   value: string | number;
   mono?: boolean;
-  format?: (n: number) => string;
+  format?: keyof typeof FORMATS;
 }) {
   const target = typeof value === "number" ? value : null;
   const [shown, setShown] = useState(target ?? 0);
@@ -40,7 +43,7 @@ export default function Stat({
   }, [target]);
 
   const text =
-    target === null ? value : format ? format(shown) : int(shown);
+    target === null ? value : FORMATS[format](shown);
 
   return (
     <div>

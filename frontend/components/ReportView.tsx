@@ -60,7 +60,7 @@ export default function ReportView({
 
       <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
         <Stat label="Ghost LOC" value={s.ghost_loc} />
-        <Stat label="Est. annual burn" value={s.annual_burn_usd} format={usd} />
+        <Stat label="Est. annual burn" value={s.annual_burn_usd} format="usd" />
         <Stat label="Safe deletes (low risk)" value={safeDeletes} />
       </div>
 
