@@ -9,7 +9,7 @@ import { getSampleReport } from "@/lib/sample";
 export default function SamplePrPage() {
   const report = getSampleReport();
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen text-ink">
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-6 py-10">
         <PrPreview

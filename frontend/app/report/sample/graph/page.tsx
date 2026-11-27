@@ -5,7 +5,7 @@ import { getSampleReport } from "@/lib/sample";
 
 export default function SampleGraphPage() {
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen text-ink">
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-6 py-10">
         <GraphView report={getSampleReport()} base="/report/sample" sample />

@@ -5,7 +5,7 @@ import { getSampleReport } from "@/lib/sample";
 
 export default function SampleReportPage() {
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen text-ink">
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-6 py-10">
         <ReportView report={getSampleReport()} base="/report/sample" sample />

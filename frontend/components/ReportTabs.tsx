@@ -19,7 +19,7 @@ export default function ReportTabs({
           key={t.key}
           href={t.href}
           aria-current={active === t.key ? "page" : undefined}
-          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors duration-200 ${
             active === t.key
               ? "border-accent text-ink"
               : "border-transparent text-ink-soft hover:text-ink"

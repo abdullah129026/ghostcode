@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import ReportView from "@/components/ReportView";
+import { Button } from "@/components/ui/button";
 import { useReport } from "@/hooks/useReport";
 
 const STAGES = [
@@ -77,7 +78,7 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen text-ink">
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-6 py-10">
         {error ? (
@@ -88,12 +89,9 @@ export default function ReportPage() {
             <p className="mx-auto mt-3 max-w-md text-sm text-ink-soft">
               {error}
             </p>
-            <button
-              onClick={() => router.push("/")}
-              className="mt-6 rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-deep"
-            >
+            <Button onClick={() => router.push("/")} className="mt-6">
               Analyze another repo
-            </button>
+            </Button>
           </div>
         ) : report ? (
           <ReportView

@@ -3,6 +3,7 @@ import type { Report } from "@/lib/api";
 import { int, pct, timeAgo, usd } from "@/lib/format";
 import Stat from "@/components/Stat";
 import ReportTabs from "@/components/ReportTabs";
+import { Button } from "@/components/ui/button";
 
 export function SampleTag() {
   return (
@@ -51,19 +52,15 @@ export default function ReportView({
           </p>
         </div>
         {onRerun && (
-          <button
-            onClick={onRerun}
-            disabled={rerunning}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-deep disabled:opacity-60"
-          >
+          <Button onClick={onRerun} loading={rerunning}>
             {rerunning ? "Re-running..." : "Re-run analysis"}
-          </button>
+          </Button>
         )}
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
         <Stat label="Ghost LOC" value={s.ghost_loc} />
-        <Stat label="Est. annual burn" value={usd(s.annual_burn_usd)} />
+        <Stat label="Est. annual burn" value={s.annual_burn_usd} format={usd} />
         <Stat label="Safe deletes (low risk)" value={safeDeletes} />
       </div>
 
@@ -81,7 +78,7 @@ export default function ReportView({
         Where it hurts
       </h2>
       {topFiles.length === 0 ? (
-        <div className="mt-4 rounded-lg border border-line bg-white p-8 text-center">
+        <div className="mt-4 rounded-lg border border-line bg-surface p-8 text-center">
           <p className="font-medium">No ghost files found. Ship it.</p>
           <p className="mt-2 text-sm text-ink-soft">
             Every file in this repo has at least one incoming edge. This is
