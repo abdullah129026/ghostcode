@@ -4,6 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { GhostEntry, Report } from "@/lib/api";
 import { csvCell, int, riskLabel, usd } from "@/lib/format";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type SortKey = "path" | "loc" | "annual_saving_usd" | "risk";
 type TypeFilter = "all" | "file" | "symbol";
@@ -86,6 +90,9 @@ export default function FileTable({
     { key: "risk", label: "Risk" },
   ];
 
+  const riskVariant = (risk: GhostEntry["risk"]) =>
+    risk === "HIGH" ? "destructive" : risk === "MED" ? "warning" : "secondary";
+
   return (
     <div>
       <div className="flex flex-wrap gap-3">
@@ -93,7 +100,7 @@ export default function FileTable({
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
           aria-label="Filter by type"
-          className="rounded-md border border-line bg-white px-3 py-2 text-sm"
+          className="h-10 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         >
           <option value="all">All types</option>
           <option value="file">Files</option>
@@ -103,31 +110,32 @@ export default function FileTable({
           value={riskFilter}
           onChange={(e) => setRiskFilter(e.target.value as RiskFilter)}
           aria-label="Filter by risk"
-          className="rounded-md border border-line bg-white px-3 py-2 text-sm"
+          className="h-10 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         >
           <option value="all">All risks</option>
           <option value="LOW">Low</option>
           <option value="MED">Medium</option>
           <option value="HIGH">High</option>
         </select>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by path"
-          aria-label="Search by path"
-          className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 text-sm placeholder:text-ink-soft/60 focus:border-accent focus:outline-none"
-        />
+        <div className="min-w-0 flex-1">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by path"
+            aria-label="Search by path"
+          />
+        </div>
       </div>
 
       {rows.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-line bg-white p-8 text-center">
+        <div className="mt-6 rounded-lg border border-line bg-surface p-8 text-center">
           <p className="font-medium">Nothing matches these filters.</p>
           <p className="mt-2 text-sm text-ink-soft">
             Loosen a filter, or celebrate: fewer ghosts is the goal.
           </p>
         </div>
       ) : (
-        <div className="mt-6 overflow-x-auto rounded-lg border border-line bg-white">
+        <div className="mt-6 overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-ink-soft">
@@ -147,7 +155,7 @@ export default function FileTable({
                   >
                     <button
                       onClick={() => toggleSort(h.key)}
-                      className="hover:text-ink"
+                      className="transition-colors hover:text-ink"
                     >
                       {h.label}
                       {sortKey === h.key && (
@@ -164,7 +172,10 @@ export default function FileTable({
             </thead>
             <tbody className="divide-y divide-line">
               {rows.map((g) => (
-                <tr key={`${g.ghost_kind}:${g.path}:${g.name ?? ""}`}>
+                <tr
+                  key={`${g.ghost_kind}:${g.path}:${g.name ?? ""}`}
+                  className="transition-colors hover:bg-surface-2/60"
+                >
                   <td className="max-w-md truncate px-4 py-3 font-mono text-[13px]">
                     {g.path}
                     {g.ghost_kind === "symbol" && g.name && (
@@ -175,12 +186,19 @@ export default function FileTable({
                   <td className="px-4 py-3 font-mono tabular-nums">
                     {usd(g.annual_saving_usd)}
                   </td>
-                  <td className="px-4 py-3">{riskLabel(g.risk)}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={riskVariant(g.risk)}>
+                      {riskLabel(g.risk)}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3 text-ink-soft">{typeLabel(g)}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`${base}/prs/1`}
-                      className="font-medium text-accent-deep underline"
+                      className={cn(
+                        buttonVariants({ variant: "link", size: "sm" }),
+                        "px-0",
+                      )}
                     >
                       Preview PR
                     </Link>
@@ -192,12 +210,13 @@ export default function FileTable({
         </div>
       )}
 
-      <button
+      <Button
+        variant="link"
         onClick={() => downloadCsv(report)}
-        className="mt-4 text-sm font-medium text-accent-deep underline"
+        className="mt-4 px-0"
       >
         Export CSV
-      </button>
+      </Button>
     </div>
   );
 }
